@@ -1,0 +1,5 @@
+alt/
+
+*.code-workspace
+requirements.txt
+ffplay.exe
