@@ -1,4 +1,6 @@
 alt/
+build/
+dist/
 
 *.code-workspace
 requirements.txt
