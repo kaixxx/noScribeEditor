@@ -355,8 +355,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _file_open(self, path):
         try:
-            with open(path, 'r', encoding="utf-8") as f:
-                htmlStr = f.read()
+            try:
+                with open(path, 'r', encoding="utf-8") as f:
+                    htmlStr = f.read()
+            except: # try utf-16 encoding (word writes html-files like this)
+                with open(path, 'r', encoding="utf-16") as f:
+                    htmlStr = f.read()
+                
             self.path = path
             
             self.editor.clear()
@@ -370,7 +375,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.editor.setFont(font)
             QtWidgets.QApplication.processEvents() # update GUI
 
-            # get path to audio file from html:
+            # get path to audio source from html:
             parser = AdvancedHTMLParser.AdvancedHTMLParser()
             parser.parseStr(htmlStr)           
             tags = parser.head.getElementsByName("audio_source")
@@ -417,13 +422,36 @@ class MainWindow(QtWidgets.QMainWindow):
         htmlStr = self.editor.toHtml()
         parser = AdvancedHTMLParser.AdvancedHTMLParser()
         parser.parseStr(htmlStr)
-    
+        
+        # add UTF-8 charset attribute
+        meta_tag = parser.createElement("meta")
+        meta_tag.charset = "UTF-8"
+        parser.head.appendChild(meta_tag)
+
         # add audio file path:
         if self.audio_source:
             audio_tag = parser.createElement("meta")
             audio_tag.name = "audio_source"
             audio_tag.content = self.audio_source
             parser.head.appendChild(audio_tag)
+
+        # add css-styles, especially for MS Word
+        meta_tag = parser.createElement("style")
+        meta_tag.type = "text/css"
+        meta_tag.appendInnerHTML(' a { text-decoration: none; } ')
+        meta_tag.appendInnerHTML(' p { font-size: 0.9em; } ')
+        meta_tag.appendInnerHTML(' .MsoNormal { font-family: "Arial"; font-weight: 400; font-style: normal; font-size: 0.9em; }')
+        meta_tag.appendInnerHTML(' @page WordSection1 {mso-line-numbers-restart: continuous; mso-line-numbers-count-by: 1; mso-line-numbers-start: 1; }')
+        meta_tag.appendInnerHTML(' div.WordSection1 {page:WordSection1;} ')
+        parser.head.appendChild(meta_tag)
+        
+        # body_children = parser.body.children
+        div_tag = parser.createElement('div')
+        div_tag.addClass('WordSection1')
+        for child in parser.body.getChildren():
+            child.remove()
+            div_tag.appendChild(child)
+        parser.body.appendChild(div_tag)
             
         # reset zoom (font-size):
         parser.body.setStyle("font-size", "")
