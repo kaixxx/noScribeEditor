@@ -61,7 +61,7 @@ class MainWindow(QtWidgets.QMainWindow):
         super(MainWindow, self).__init__(*args, **kwargs)
         
         self.media_player = None
-        self.playback_speed = 150
+        # self.playback_speed = 100
         self.path = None # current file
         self.audio_source = None # corresponding audio file
         self.keep_playing = False # Stops the play_along-function when set to False 
@@ -147,12 +147,14 @@ class MainWindow(QtWidgets.QMainWindow):
         # file_menu.addAction(open_file_action)
         noScribe_toolbar.addAction(self.play_along_action)
         
+        """
         self.playback_speed = QtWidgets.QComboBox()
         self.playback_speed.addItems(['60%', '80%', '100%', '120%', '135%', '150%', '180%', '200%'])
         self.playback_speed.setCurrentIndex(2) # default 100%
         self.playback_speed.setToolTip("Playback speed")
         self.playback_speed.setStatusTip("Set playback speed")
         noScribe_toolbar.addWidget(self.playback_speed)
+        """
             
         edit_toolbar = QtWidgets.QToolBar("Edit")
         edit_toolbar.setMovable(False)
@@ -627,14 +629,15 @@ class MainWindow(QtWidgets.QMainWindow):
 
             if not self.select_current_segment():
                 raise Exception("No audio timestamps found in current selection.")
-            speed = int(self.playback_speed.currentText()[:-1])
+            # speed = int(self.playback_speed.currentText()[:-1])
                             
             # play audio
             self.playback_start_pos = start
             self.playing_error = None
             self.keep_playing = True
             
-            ff_opts = {'ss': start / 1000, 'af':'atempo=' + str(speed / 100), 'vn':True}
+            # ff_opts = {'ss': start / 1000, 'af':'atempo=' + str(speed / 100) + '', 'vn':True}
+            ff_opts = {'ss': start / 1000, 'vn':True}
             self.media_player = MediaPlayer(self.audio_source, ff_opts=ff_opts, callback=self.ffplay_callback)
             
             self.playback_start_time = datetime.now()
@@ -644,9 +647,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.play_along_action.blockSignals(False)
                     
             while self.keep_playing:                    
-                audio_playback_time = round((datetime.now() - self.playback_start_time).total_seconds() * 1000 * (speed / 100)) # im ms
+                # audio_playback_time = round((datetime.now() - self.playback_start_time).total_seconds() * 1000 * (speed / 100)) # im ms
+                audio_playback_time = round((datetime.now() - self.playback_start_time).total_seconds() * 1000) # im ms
                 curr_audio_pos = self.playback_start_pos + audio_playback_time
                 # curr_audio_pos = self.media_player.get_pts() => crashes silently
+                """
                 new_speed = int(self.playback_speed.currentText()[:-1])
                 if new_speed != speed: # user changed playback speed
                     speed = new_speed
@@ -655,7 +660,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.media_player = MediaPlayer(self.audio_source, ff_opts=ff_opts, callback=self.ffplay_callback) 
                     self.playback_start_pos = curr_audio_pos
                     self.playback_start_time = datetime.now()                       
-                
+                """
                 if curr_audio_pos > stop: # go to next segment in transcript
                     try:
                         new_start, new_stop = self.find_segment(curr_audio_pos)
