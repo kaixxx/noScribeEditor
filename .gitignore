@@ -5,3 +5,6 @@ dist/
 *.code-workspace
 requirements.txt
 ffplay.exe
+ffplay
+
+.DS_Store
