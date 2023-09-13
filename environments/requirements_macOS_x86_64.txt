@@ -3,3 +3,5 @@ qtawesome
 pyqt5
 ffpyplayer
 AdvancedHTMLParser
+pillow
+pyinstaller
