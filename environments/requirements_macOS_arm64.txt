@@ -1,0 +1,5 @@
+qdarkstyle
+qtawesome
+# pyqt5 # install manually with `pip install pyqt5 --config-settings --confirm-license= --verbose`
+ffpyplayer
+AdvancedHTMLParser
