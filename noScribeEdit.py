@@ -310,7 +310,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Initialize.
         self.cursor_changed()
         self.update_title()
-        self.setWindowIcon(QtGui.QIcon('noScribeLogo.ico'))
+        self.setWindowIcon(QtGui.QIcon('noScribeEditLogo.png'))
         self.setStyleSheet("* {background-color: #2b2b2b;} QPushButton {background-color: #474747; }")
 
         if self.height() < 500:
