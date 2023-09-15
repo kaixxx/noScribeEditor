@@ -33,6 +33,8 @@ from datetime import datetime
 from time import sleep
 import AdvancedHTMLParser
 
+app_dir = os.path.abspath(os.path.dirname(__file__))
+
 icon_color = '#aaaaaa'
 icon_color_active = '#1f6aa5'
 highlight_color = '#ff8c00'
@@ -54,6 +56,19 @@ def decode_timestamp(ts):
         raise Exception(f"Unable to decode timestamp <{ts}>")
     else:
         return int(ts_list[1]), int(ts_list[2]) 
+
+def ms_to_str(t):
+         hh = t//(60*60*1000) # hours
+         t = t-hh*(60*60*1000)
+         mm = t//(60*1000) # minutes
+         t = t-mm*(60*1000)
+         ss = t//1000 # seconds
+         # sss = t-ss*1000 # milliseconds
+         return(f'{hh:02d}:{mm:02d}:{ss:02d}')
+    
+def timestamp_to_string(start, stop):
+    # returns "HH:MM:SS - HH:MM:SS"    
+    return ms_to_str(start) + ' - ' + ms_to_str(stop)
 
 class MainWindow(QtWidgets.QMainWindow):
 
@@ -77,6 +92,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.editor.setAcceptRichText(True)
         self.editor.setAutoFormatting(QtWidgets.QTextEdit.AutoNone)
         self.editor.cursorPositionChanged.connect(self.cursor_changed)
+        self.editor.selectionChanged.connect(self.cursor_changed)
         font = QtGui.QFont(default_font, 11)
         self.editor.setFont(font)
         layout.addWidget(self.editor)
@@ -88,6 +104,11 @@ class MainWindow(QtWidgets.QMainWindow):
         # Status Bar
         self.status = QtWidgets.QStatusBar()
         self.status.setStyleSheet("background-color: #2b2b2b; border: 0px solid #474747")
+        self.timestamp_status = QtWidgets.QLabel('')
+        self.timestamp_status.setMinimumWidth(130)
+        self.timestamp_status.setStyleSheet("border-left: 2px solid #474747; ")
+        self.timestamp_status.setAlignment(QtCore.Qt.AlignCenter)
+        self.status.addPermanentWidget(self.timestamp_status)
         self.setStatusBar(self.status)
 
         # Toolbar
@@ -139,7 +160,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.addToolBar(noScribe_toolbar)
         # noScribe_menu = self.menuBar().addMenu("no&Scribe")
        
-        self.play_along_action = QtWidgets.QAction(qta.icon('fa5s.volume-down', color=highlight_color), "Play Audio", self)      
+        self.play_along_action = QtWidgets.QAction(qta.icon('fa5s.volume-down', color=highlight_color), "Play/Pause Audio", self)      
         self.play_along_action.setCheckable(True)
         self.play_along_action.setStatusTip("Listen to the audio source of the current text")
         self.play_along_action.setShortcut(QtGui.QKeySequence('Ctrl+Space'))
@@ -310,7 +331,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Initialize.
         self.cursor_changed()
         self.update_title()
-        self.setWindowIcon(QtGui.QIcon('noScribeEditLogo.png'))
+        self.setWindowIcon(QtGui.QIcon(os.path.join(app_dir, 'noScribeEditLogo.png')))
         self.setStyleSheet("* {background-color: #2b2b2b;} QPushButton {background-color: #474747; }")
 
         if self.height() < 500:
@@ -324,7 +345,17 @@ class MainWindow(QtWidgets.QMainWindow):
             o.blockSignals(b)
 
     def cursor_changed(self):
-        self.keep_playing = False # stop playing if user moves the cursor
+        if not self.keep_playing:
+            # show current audio timestamp in status:
+            cr = self.editor.textCursor()
+            ts = cr.charFormat().anchorHref()
+            try:
+                start, stop = decode_timestamp(ts)
+                self.timestamp_status.setText('♪ ' + timestamp_to_string(start, stop))
+            except:
+                self.timestamp_status.setText('')
+        else:
+            self.keep_playing = False # stop playing if user moves the cursor
         
         # Update the font format toolbar/actions when a new text selection is made. This is neccessary to keep
         # toolbars/etc. in sync with the current edit state.
@@ -679,6 +710,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.play_along_action.blockSignals(True) 
                 self.play_along_action.setChecked(self.keep_playing)
                 self.play_along_action.blockSignals(False)
+                self.timestamp_status.setText('♪ ' + ms_to_str(curr_audio_pos))
                 QtWidgets.QApplication.processEvents() # update GUI
         
         except Exception as e:
@@ -692,6 +724,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.play_along_action.blockSignals(True) 
             self.play_along_action.setChecked(False)
             self.play_along_action.blockSignals(False)
+            self.cursor_changed()
             if self.playing_error:
                 self.dialog_critical(self.playing_error)
                 self.playing_error = None
