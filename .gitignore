@@ -1,10 +1,10 @@
 alt/
 build/
 dist/
+Test/
+.vscode/
 
 *.code-workspace
-requirements.txt
-ffplay.exe
-ffplay
+ffplay_test.py
 
 .DS_Store

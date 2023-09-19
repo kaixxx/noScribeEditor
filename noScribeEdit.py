@@ -1,4 +1,4 @@
-# noScribe Editor 
+# noScribeEdit 
 # Part of noScribe, the AI-powered Audio Transcription
 # Copyright (C) 2023 Kai Dröge
 # ported to MAC by Philipp Schneider (gernophil)
@@ -28,10 +28,12 @@ if platform.system() == 'Windows':
 
 import os
 import sys
-from ffpyplayer.player import MediaPlayer
+import shlex
+import subprocess
 from datetime import datetime
 from time import sleep
 import AdvancedHTMLParser
+from tempfile import TemporaryDirectory
 
 app_dir = os.path.abspath(os.path.dirname(__file__))
 
@@ -76,11 +78,11 @@ class MainWindow(QtWidgets.QMainWindow):
         super(MainWindow, self).__init__(*args, **kwargs)
         
         self.media_player = None
-        # self.playback_speed = 100
+        self.playback_speed = 100
         self.path = None # current file
         self.audio_source = None # corresponding audio file
+        self.tmp_audio_file = None
         self.keep_playing = False # Stops the play_along-function when set to False 
-        self.playing_error = None
         
         # GUI
         
@@ -168,14 +170,12 @@ class MainWindow(QtWidgets.QMainWindow):
         # file_menu.addAction(open_file_action)
         noScribe_toolbar.addAction(self.play_along_action)
         
-        """
         self.playback_speed = QtWidgets.QComboBox()
         self.playback_speed.addItems(['60%', '80%', '100%', '120%', '135%', '150%', '180%', '200%'])
         self.playback_speed.setCurrentIndex(2) # default 100%
         self.playback_speed.setToolTip("Playback speed")
         self.playback_speed.setStatusTip("Set playback speed")
         noScribe_toolbar.addWidget(self.playback_speed)
-        """
             
         edit_toolbar = QtWidgets.QToolBar("Edit")
         edit_toolbar.setMovable(False)
@@ -334,8 +334,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setWindowIcon(QtGui.QIcon(os.path.join(app_dir, 'noScribeEditLogo.png')))
         self.setStyleSheet("* {background-color: #2b2b2b;} QPushButton {background-color: #474747; }")
 
-        if self.height() < 500:
-            self.resize(self.width(), 500) # make it at least 500 pixel high
+        # make the window at least 700 x 900
+        if self.height() < 700:
+            self.resize(self.width(), 700)
+        if self.width() < 900:
+            self.resize(900, self.height())
         self.show()
         if len(sys.argv) > 1:
             self._file_open(sys.argv[1])
@@ -399,6 +402,7 @@ class MainWindow(QtWidgets.QMainWindow):
             
             self.editor.clear()
             self.audio_source = None
+            self.tmp_audio_file = None
             self.status.showMessage("Loading... please wait.")
             # avoid that all anchors become formatted as underlined and blue 
             doc = self.editor.document()
@@ -406,34 +410,94 @@ class MainWindow(QtWidgets.QMainWindow):
             # reset the font size/zoom:
             font = QtGui.QFont(default_font, 11)
             self.editor.setFont(font)
+            self.editor.setText("Loading... please wait.")
             QtWidgets.QApplication.processEvents() # update GUI
-
-            # get path to audio source from html:
-            parser = AdvancedHTMLParser.AdvancedHTMLParser()
-            parser.parseStr(htmlStr)           
-            tags = parser.head.getElementsByName("audio_source")
-            if len(tags) > 0: 
-                self.audio_source = tags[0].content                
-
-            # load html into the editor
-            doc.setHtml(htmlStr)
-            # move to the beginning
-            cr = self.editor.textCursor()
-            cr.setPosition(0)
-            self.editor.setTextCursor(cr)
-
-            doc.clearUndoRedoStacks()
-            doc.setModified(False)
             
-            self.update_title()
-            self.status.clearMessage()
-        
+            try:
+                # get path to audio source from html:
+                parser = AdvancedHTMLParser.AdvancedHTMLParser()
+                parser.parseStr(htmlStr)           
+                tags = parser.head.getElementsByName("audio_source")
+                if (len(tags) == 0) or (not os.path.exists(tags[0].content)): # audio source moved or missing
+                    ret = QtWidgets.QMessageBox.warning(self, "noScribeEdit", 
+                                                "Audio source file not found.\n"
+                                                "Do you want to search for it?",
+                                                QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel, 
+                                                QtWidgets.QMessageBox.Ok)
+                    if ret == QtWidgets.QMessageBox.Cancel:
+                        self.status.clearMessage()
+                        return
+                    else:
+                        if not self.open_audio_source():
+                            self.status.clearMessage()
+                            return
+                else:
+                    self.audio_source = tags[0].content
+                    if not self._load_audio():
+                        self.audio_source = None
+                self.status.clearMessage()            
+            finally:                
+                # load html into the editor (do this even if loadig the audio fails)
+                doc.setHtml(htmlStr)
+                # move to the beginning
+                cr = self.editor.textCursor()
+                cr.setPosition(0)
+                self.editor.setTextCursor(cr)
+            
+                doc.clearUndoRedoStacks()
+                doc.setModified(False)
+                
+                self.update_title()
+                    
         except Exception as e:
+            self.status.clearMessage()
             self.dialog_critical(str(e))
+            
+    def _load_audio(self):
+            # create tmp wav-file (allows for more precise seeking compared with many other formats)
+            self.tmpdir = TemporaryDirectory('noScribe')
+            self.tmp_audio_file = os.path.join(self.tmpdir.name, 'tmp_editaudio.wav')
+            res = ''
+            try:
+                if platform.system() == 'Windows':
+                    ffmpeg_abspath = os.path.join(app_dir, 'ffmpeg_win', 'ffmpeg.exe')
+                elif platform.system() == 'Darwin': # = MAC
+                    ffmpeg_abspath = os.path.join(app_dir, 'ffmpeg_mac', 'ffmpeg')
+                else:
+                    raise Exception('Platform not supported yet.')
+                if not os.path.exists(ffmpeg_abspath):
+                    raise Exception('Ffmpeg not found.')
+                
+                ffmpeg_cmd = f'{ffmpeg_abspath} -hwaccel auto -loglevel error -i "{self.audio_source}" -vn -sn -y "{self.tmp_audio_file}"'
+                print(ffmpeg_cmd)
+                
+                if platform.system() == 'Windows':
+                    # (supresses the terminal, see: https://stackoverflow.com/questions/1813872/running-a-process-in-pythonw-with-popen-without-a-console)
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    ffmpeg = subprocess.Popen(ffmpeg_cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, encoding='UTF-8',  startupinfo=startupinfo, close_fds=True)
+                elif platform.system() == 'Darwin': # = MAC
+                    ffmpeg_cmd = shlex.split(ffmpeg_cmd)
+                    ffmpeg = subprocess.Popen(ffmpeg_cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, encoding='UTF-8', close_fds=True)
+                else:
+                    raise Exception('Platform not supported yet.')
+
+                while ffmpeg.poll() == None: 
+                    sleep(0.1) # wait for ffmpeg to terminate
+                (out, err) = ffmpeg.communicate()
+                print(out)
+                print(err)
+                if err != '':
+                    raise(f'FFmpeg error: {err}')
+                                
+                return True
+            except Exception as e:
+                self.dialog_critical(f'Error creatig temporary audio file.\n {e}\n{res}')
+                return False
 
     def file_open(self):
         if self.editor.document().isModified():
-            ret = QtWidgets.QMessageBox.warning(self, "noScribe Editor", 
+            ret = QtWidgets.QMessageBox.warning(self, "noScribeEdit", 
                                                 "The document has been modified.\n"
                                                 "Do you want to save your changes?",
                                                 QtWidgets.QMessageBox.Save | QtWidgets.QMessageBox.Discard
@@ -526,9 +590,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 return False    
             self.status.showMessage("Loading... please wait.")
             self.audio_source = path
+            ret = self._load_audio()                 
             self.status.clearMessage()
-            self.editor.document().setModified(True)
-            return True
+            self.editor.document().setModified(True)            
+            return ret
 
     def select_current_segment(self):
         # Expands the selection so that it includes the whole transcript segment with the current timestamp
@@ -607,23 +672,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 return -1, -1
         else:
             return -1, -1    
-        
-    def ffplay_callback(self, selector, value):
-        if selector in ['audio:error', 'video:error', 'subtitle:error', 'read:error']:
-            self.playing_error = "Error playing audio file\n" + value
-            self.keep_playing = False
-
-        elif selector == 'eof':
-            self.keep_playing = False
-            
+               
     def play_along(self):
         if self.keep_playing: # function already running, stop it
             self.keep_playing = False
             return
         
         try:
-            if (not self.audio_source) or (not os.path.exists(self.audio_source)): # audio source moved or missing
-                ret = QtWidgets.QMessageBox.warning(self, "noScribe Editor", 
+            if not self.tmp_audio_file: # audio source moved or missing
+                ret = QtWidgets.QMessageBox.warning(self, "noScribeEdit", 
                                             "Audio source file not found.\n"
                                             "Do you want to search for it?",
                                             QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel, 
@@ -641,7 +698,7 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 start, stop = decode_timestamp(ts)
             except:
-                ret = QtWidgets.QMessageBox.warning(self, "noScribe Editor", 
+                ret = QtWidgets.QMessageBox.warning(self, "noScribeEdit", 
                                     "No audio timestamp found for current selection.\n"
                                     "Do you want to start from the beginning?",
                                     QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel, 
@@ -660,16 +717,34 @@ class MainWindow(QtWidgets.QMainWindow):
 
             if not self.select_current_segment():
                 raise Exception("No audio timestamps found in current selection.")
-            # speed = int(self.playback_speed.currentText()[:-1])
+            speed = int(self.playback_speed.currentText()[:-1])
                             
             # play audio
             self.playback_start_pos = start
-            self.playing_error = None
             self.keep_playing = True
+
+            if platform.system() == 'Windows':
+                ffplay_abspath = os.path.join(app_dir, 'ffmpeg_win', 'ffplay.exe')
+            elif platform.system() == 'Darwin': # = MAC
+                ffplay_abspath = os.path.join(app_dir, 'ffmpeg_mac', 'ffplay')
+            else:
+                raise Exception('Platform not supported yet.')
+            if not os.path.exists(ffplay_abspath):
+                raise Exception('FFPlay not found.')
             
-            # ff_opts = {'ss': start / 1000, 'af':'atempo=' + str(speed / 100) + '', 'vn':True}
-            ff_opts = {'ss': start / 1000, 'vn':True}
-            self.media_player = MediaPlayer(self.audio_source, ff_opts=ff_opts, callback=self.ffplay_callback)
+            ffplay_cmd = f'{ffplay_abspath} -loglevel error -vn -sn -ss {start}ms -nodisp -af "atempo={speed/100}" "{self.tmp_audio_file}"'
+            print(ffplay_cmd)
+            
+            if platform.system() == 'Windows':
+                # (supresses the terminal, see: https://stackoverflow.com/questions/1813872/running-a-process-in-pythonw-with-popen-without-a-console)
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                self.media_player = subprocess.Popen(ffplay_cmd, stderr=subprocess.PIPE, encoding='UTF-8', startupinfo=startupinfo, close_fds=True)
+            elif platform.system() == 'Darwin': # = MAC
+                ffplay_cmd = shlex.split(ffplay_cmd)
+                self.media_player = subprocess.Popen(ffplay_cmd, stderr=subprocess.PIPE, encoding='UTF-8', close_fds=True)
+            else:
+                raise Exception('Platform not supported yet.')
             
             self.playback_start_time = datetime.now()
 
@@ -677,21 +752,29 @@ class MainWindow(QtWidgets.QMainWindow):
             self.play_along_action.setChecked(True)
             self.play_along_action.blockSignals(False)
                     
-            while self.keep_playing:                    
-                # audio_playback_time = round((datetime.now() - self.playback_start_time).total_seconds() * 1000 * (speed / 100)) # im ms
-                audio_playback_time = round((datetime.now() - self.playback_start_time).total_seconds() * 1000) # im ms
+            while self.keep_playing:
+                if self.media_player.poll() != None: # ffplay terminated
+                    (out, err) = self.media_player.communicate()
+                    if err != '':
+                        raise Exception(f'FFPlay error: {err}')
+                    else:
+                        break
+                
+                audio_playback_time = round((datetime.now() - self.playback_start_time).total_seconds() * 1000 * (speed / 100)) # im ms
+                # audio_playback_time = round((datetime.now() - self.playback_start_time).total_seconds() * 1000) # im ms
                 curr_audio_pos = self.playback_start_pos + audio_playback_time
-                # curr_audio_pos = self.media_player.get_pts() => crashes silently
-                """
+                
                 new_speed = int(self.playback_speed.currentText()[:-1])
                 if new_speed != speed: # user changed playback speed
+                    self.media_player.kill()
                     speed = new_speed
-                    ff_opts = {'ss': curr_audio_pos / 1000, 'af':'atempo=' + str(speed / 100), 'vn':True}
-                    self.media_player.close_player()
-                    self.media_player = MediaPlayer(self.audio_source, ff_opts=ff_opts, callback=self.ffplay_callback) 
+                    ffplay_cmd = f'{ffplay_abspath} -loglevel error -vn -sn -ss {curr_audio_pos}ms -nodisp -af "atempo={speed/100}" "{self.tmp_audio_file}"'
+                    if platform.system() == 'Darwin': # = MAC
+                        ffplay_cmd = shlex.split(ffplay_cmd)
+                    self.media_player = subprocess.Popen(ffplay_cmd, stderr=subprocess.PIPE, encoding='UTF-8', close_fds=True)                   
                     self.playback_start_pos = curr_audio_pos
                     self.playback_start_time = datetime.now()                       
-                """
+
                 if curr_audio_pos > stop: # go to next segment in transcript
                     try:
                         new_start, new_stop = self.find_segment(curr_audio_pos)
@@ -718,23 +801,19 @@ class MainWindow(QtWidgets.QMainWindow):
         
         finally:
             if self.media_player:
-                self.media_player.close_player()
+                self.media_player.kill()
                 self.media_player = None
             self.keep_playing = False
             self.play_along_action.blockSignals(True) 
             self.play_along_action.setChecked(False)
             self.play_along_action.blockSignals(False)
             self.cursor_changed()
-            if self.playing_error:
-                self.dialog_critical(self.playing_error)
-                self.playing_error = None
             
     def closeEvent(self, event):
         self.keep_playing = False
-        # self.stop_audio()
                     
         if self.editor.document().isModified():
-            ret = QtWidgets.QMessageBox.warning(self, "noScribe Editor", 
+            ret = QtWidgets.QMessageBox.warning(self, "noScribeEdit", 
                                                 "The document has been modified.\n"
                                                 "Do you want to save your changes?",
                                                 QtWidgets.QMessageBox.Save | QtWidgets.QMessageBox.Discard
@@ -746,18 +825,18 @@ class MainWindow(QtWidgets.QMainWindow):
                 return
         
         if self.media_player:
-            self.media_player.close_player()
+            self.media_player.kill()
             self.media_player = None
         
         event.accept()
 
     def update_title(self):
-        self.setWindowTitle("%s - noScribe Editor" % (os.path.basename(self.path) if self.path else "Untitled"))
+        self.setWindowTitle("%s - noScribeEdit" % (os.path.basename(self.path) if self.path else "Untitled"))
 
 if __name__ == '__main__':
 
     app = QtWidgets.QApplication(sys.argv)
-    app.setApplicationName("noScribe Editor")
+    app.setApplicationName("noScribeEdit")
     # setup stylesheet
     app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
 

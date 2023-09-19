@@ -7,8 +7,9 @@ block_cipher = None
 a = Analysis(
     ['noScribeEdit.py'],
     pathex=[],
-    binaries=[],
-    datas=[],
+    binaries=[('C:/Users/kai/Documents/Programmierung/2023_WhisperTranscribe/noScribeEditor/ffmpeg_win/ffmpeg.exe','ffmpeg_win'),
+        ('C:/Users/kai/Documents/Programmierung/2023_WhisperTranscribe/noScribeEditor/ffmpeg_win/ffplay.exe','ffmpeg_win')],
+    datas=[('C:/Users/kai/Documents/Programmierung/2023_WhisperTranscribe/noScribeEditor/noScribeEditLogo.png', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -19,6 +20,7 @@ a = Analysis(
     cipher=block_cipher,
     noarchive=False,
 )
+
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
@@ -31,12 +33,13 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='noScribeEditLogo.ico'
 )
 coll = COLLECT(
     exe,
