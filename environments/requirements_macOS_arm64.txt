@@ -5,5 +5,5 @@ qtawesome
 ffpyplayer
 AdvancedHTMLParser
 pillow
-# pyinstaller @ git+https://github.com/pyinstaller/pyinstaller.git@develop
-pyinstaller
+pyinstaller @ git+https://github.com/pyinstaller/pyinstaller.git@develop
+# pyinstaller
