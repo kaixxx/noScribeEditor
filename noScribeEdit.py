@@ -414,6 +414,8 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QApplication.processEvents() # update GUI
             
             try:
+                # QTextEdit does not understand "font-size: 0.8em", only "small":
+                htmlStr = htmlStr.replace('font-size: 0.8em', 'font-size: small')
                 # get path to audio source from html:
                 parser = AdvancedHTMLParser.AdvancedHTMLParser()
                 parser.parseStr(htmlStr)           
@@ -554,6 +556,9 @@ class MainWindow(QtWidgets.QMainWindow):
         parser.body.setStyle("font-size", "")
 
         htmlStr = parser.asHTML()
+        # replace "small" font size by "0.8em" (for word): 
+        htmlStr = htmlStr.replace('font-size: small', 'font-size: 0.8em')
+        
         with open(path, 'w', encoding="utf-8") as f:
             f.write(htmlStr)
         self.editor.document().setModified(False)
