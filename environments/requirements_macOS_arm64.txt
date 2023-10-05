@@ -1,7 +1,9 @@
+# install with PYINSTALLER_COMPILE_BOOTLOADER=1 pip install -r
 qdarkstyle
 qtawesome
 # pyqt5 # install manually with `pip install pyqt5 --config-settings --confirm-license= --verbose`
 ffpyplayer
 AdvancedHTMLParser
 pillow
-pyinstaller
+pyinstaller @ git+https://github.com/pyinstaller/pyinstaller.git@develop
+# pyinstaller
