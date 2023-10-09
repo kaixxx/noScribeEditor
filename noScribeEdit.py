@@ -54,7 +54,7 @@ def decode_timestamp(ts):
     if not ts:
         raise Exception("No timestamp found")
     ts_list = ts.split('_')
-    if (len(ts_list) != 3) or (ts_list[0] != "ts"):
+    if (len(ts_list) < 3) or (ts_list[0] != "ts"):
         raise Exception(f"Unable to decode timestamp <{ts}>")
     else:
         return int(ts_list[1]), int(ts_list[2]) 
