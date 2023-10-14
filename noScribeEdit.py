@@ -413,12 +413,21 @@ class MainWindow(QtWidgets.QMainWindow):
             self.editor.setText("Loading... please wait.")
             QtWidgets.QApplication.processEvents() # update GUI
             
-            try:
-                # QTextEdit does not understand "font-size: 0.8em", only "small":
-                htmlStr = htmlStr.replace('font-size: 0.8em', 'font-size: small')
+            # QTextEdit does not understand "font-size: 0.8em", only "small":
+            htmlStr = htmlStr.replace('font-size: 0.8em', 'font-size: small')
+            
+            parser = AdvancedHTMLParser.AdvancedHTMLParser()
+            parser.parseStr(htmlStr)    
+            
+            try:       
+                # save timestamps from name to href-attribute because QTextEdit does not handle ankers with only the name-attribute well:
+                for anker in parser.getElementsByTagName('a'):
+                    anker_name = str(anker.name)
+                    if (anker_name != None) and (anker_name.startswith('ts_')):
+                        anker.href = anker_name
+                        anker.removeAttribute('name')
+
                 # get path to audio source from html:
-                parser = AdvancedHTMLParser.AdvancedHTMLParser()
-                parser.parseStr(htmlStr)           
                 tags = parser.head.getElementsByName("audio_source")
                 if (len(tags) == 0) or (not os.path.exists(tags[0].content)): # audio source moved or missing
                     ret = QtWidgets.QMessageBox.warning(self, "noScribeEdit", 
@@ -437,9 +446,10 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.audio_source = tags[0].content
                     if not self._load_audio():
                         self.audio_source = None
-                self.status.clearMessage()            
+                                    
             finally:                
                 # load html into the editor (do this even if loadig the audio fails)
+                htmlStr = parser.asHTML()
                 doc.setHtml(htmlStr)
                 # move to the beginning
                 cr = self.editor.textCursor()
@@ -450,6 +460,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 doc.setModified(False)
                 
                 self.update_title()
+                self.status.clearMessage()
                     
         except Exception as e:
             self.status.clearMessage()
@@ -521,6 +532,13 @@ class MainWindow(QtWidgets.QMainWindow):
         htmlStr = self.editor.toHtml()
         parser = AdvancedHTMLParser.AdvancedHTMLParser()
         parser.parseStr(htmlStr)
+        
+        # save timestamps back into the name attribute:
+        for anker in parser.getElementsByTagName('a'):
+            anker_href = str(anker.href)
+            if (anker_href != None) and (anker_href.startswith('ts_')):
+                anker.name = anker_href
+                anker.removeAttribute('href')
         
         # add UTF-8 charset attribute
         meta_tag = parser.createElement("meta")
