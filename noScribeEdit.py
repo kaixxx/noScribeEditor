@@ -476,6 +476,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     ffmpeg_abspath = os.path.join(app_dir, 'ffmpeg_win', 'ffmpeg.exe')
                 elif platform.system() == 'Darwin': # = MAC
                     ffmpeg_abspath = os.path.join(app_dir, 'ffmpeg_mac', 'ffmpeg')
+                elif platform.system() == 'Linux': # = MAC
+                    ffmpeg_abspath = os.path.join(app_dir, 'ffmpeg_linux', 'ffmpeg')
                 else:
                     raise Exception('Platform not supported yet.')
                 if not os.path.exists(ffmpeg_abspath):
@@ -489,7 +491,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     startupinfo = subprocess.STARTUPINFO()
                     startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                     ffmpeg = subprocess.Popen(ffmpeg_cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, encoding='UTF-8',  startupinfo=startupinfo, close_fds=True)
-                elif platform.system() == 'Darwin': # = MAC
+                elif platform.system() in ('Darwin', 'Linux'): # = MAC
                     ffmpeg_cmd = shlex.split(ffmpeg_cmd)
                     ffmpeg = subprocess.Popen(ffmpeg_cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, encoding='UTF-8', close_fds=True)
                 else:
@@ -750,6 +752,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 ffplay_abspath = os.path.join(app_dir, 'ffmpeg_win', 'ffplay.exe')
             elif platform.system() == 'Darwin': # = MAC
                 ffplay_abspath = os.path.join(app_dir, 'ffmpeg_mac', 'ffplay')
+            elif platform.system() == 'Linux': # = MAC
+                ffmpeg_abspath = os.path.join(app_dir, 'ffmpeg_linux', 'ffmpeg')
             else:
                 raise Exception('Platform not supported yet.')
             if not os.path.exists(ffplay_abspath):
@@ -763,7 +767,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 startupinfo = subprocess.STARTUPINFO()
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                 self.media_player = subprocess.Popen(ffplay_cmd, stderr=subprocess.PIPE, encoding='UTF-8', startupinfo=startupinfo, close_fds=True)
-            elif platform.system() == 'Darwin': # = MAC
+            elif platform.system() in ('Darwin', 'Linux'): # = MAC
                 ffplay_cmd = shlex.split(ffplay_cmd)
                 self.media_player = subprocess.Popen(ffplay_cmd, stderr=subprocess.PIPE, encoding='UTF-8', close_fds=True)
             else:
@@ -792,7 +796,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.media_player.kill()
                     speed = new_speed
                     ffplay_cmd = f'{ffplay_abspath} -loglevel error -vn -sn -ss {curr_audio_pos}ms -nodisp -af "atempo={speed/100}" "{self.tmp_audio_file}"'
-                    if platform.system() == 'Darwin': # = MAC
+                    if platform.system() in ('Darwin', 'Linux'): # = MAC
                         ffplay_cmd = shlex.split(ffplay_cmd)
                     self.media_player = subprocess.Popen(ffplay_cmd, stderr=subprocess.PIPE, encoding='UTF-8', close_fds=True)                   
                     self.playback_start_pos = curr_audio_pos
