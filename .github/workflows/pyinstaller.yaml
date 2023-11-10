@@ -48,10 +48,10 @@ jobs:
         run: pip install pyinstaller
       - name: Build package with pyinstaller
         run: pyinstaller noScribeEdit.spec
-      - name: Upload wheels
+      - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: noScribeEdit
+          name: noScribeEdit-win-${{ matrix.target }}
           path: dist
 
   # macos:
