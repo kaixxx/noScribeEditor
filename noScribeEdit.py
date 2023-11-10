@@ -753,7 +753,7 @@ class MainWindow(QtWidgets.QMainWindow):
             elif platform.system() == 'Darwin': # = MAC
                 ffplay_abspath = os.path.join(app_dir, 'ffmpeg_mac', 'ffplay')
             elif platform.system() == 'Linux': # = MAC
-                ffmpeg_abspath = os.path.join(app_dir, 'ffmpeg_linux', 'ffmpeg')
+                ffplay_abspath = os.path.join(app_dir, 'ffmpeg_linux', 'ffplay')
             else:
                 raise Exception('Platform not supported yet.')
             if not os.path.exists(ffplay_abspath):
