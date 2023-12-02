@@ -1,0 +1,80 @@
+name: pyinstaller
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - '*'
+  pull_request:
+
+jobs:
+  # linux:
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     matrix:
+  #       target: [x86_64, x86, aarch64, armv7, s390x, ppc64le]
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - uses: actions/setup-python@v4
+  #       with:
+  #         python-version: '3.10'
+  #     - name: Build wheels
+  #       uses: PyO3/maturin-action@v1
+  #       with:
+  #         target: ${{ matrix.target }}
+  #         args: --release --out dist --find-interpreter
+  #         sccache: 'true'
+  #         manylinux: auto
+  #     - name: Upload wheels
+  #       uses: actions/upload-artifact@v3
+  #       with:
+  #         name: wheels
+  #         path: dist
+
+  windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        target: [x64, x86]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          architecture: ${{ matrix.target }}
+      - name: Upgrade pip
+        run: pip install --upgrade pip
+      - name: Install pyinstaller
+        run: pip install pyinstaller
+      - name: Build package with pyinstaller
+        run: pyinstaller noScribeEdit.spec
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: noScribeEdit-win-${{ matrix.target }}
+          path: dist
+
+  macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        target: [x64, arm64]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          architecture: ${{ matrix.target }}
+      - name: Upgrade pip
+        run: pip install --upgrade pip
+      - name: Install pyinstaller
+        run: pip install pyinstaller
+      - name: Build package with pyinstaller
+        run: pyinstaller noScribeEdit-macOS.spec
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: noScribeEdit-macOS-${{ matrix.target }}
+          path: dist
