@@ -501,11 +501,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 print(out)
                 print(err)
                 if err != '':
-                    raise(f'FFmpeg error: {err}')
+                    raise RuntimeError(f'FFmpeg error: {err}')
                                 
                 return True
             except Exception as e:
-                self.dialog_critical(f'Error creatig temporary audio file.\n {e}\n{res}')
+                self.dialog_critical(f'Error creating temporary audio file.\n {e}\n{res}')
                 return False
 
     def file_open(self):
