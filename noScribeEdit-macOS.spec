@@ -7,8 +7,8 @@ block_cipher = None
 a = Analysis(
     ['noScribeEdit.py'],
     pathex=[],
-    binaries=[('ffmpeg_win/ffmpeg.exe','ffmpeg_win'),
-        ('ffmpeg_win/ffplay.exe','ffmpeg_win')],
+    binaries=[('ffmpeg_mac/ffmpeg','ffmpeg_mac'),
+        ('ffmpeg_mac/ffplay','ffmpeg_mac')],
     datas=[('noScribeEditLogo.png', '.')],
     hiddenimports=[],
     hookspath=[],
