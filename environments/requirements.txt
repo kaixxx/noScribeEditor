@@ -1,6 +1,5 @@
-qdarkstyle
 qtawesome
-pyqt5
+pyqt6
 ffpyplayer
 AdvancedHTMLParser
 pillow
