@@ -17,14 +17,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import qdarkstyle
 import qtawesome as qta
-from PyQt5 import QtGui
-from PyQt5 import QtWidgets
-from PyQt5 import QtCore
+from PyQt6 import QtGui
+from PyQt6 import QtWidgets
+from PyQt6 import QtCore
 import platform
-if platform.system() == 'Windows':
-    import pywinstyles
 
 import os
 import sys
@@ -34,17 +31,14 @@ from datetime import datetime
 from time import sleep
 import AdvancedHTMLParser
 from tempfile import TemporaryDirectory
+from search_and_replace_dialog import SearchAndReplaceDialog
 
 app_dir = os.path.abspath(os.path.dirname(__file__))
 
 icon_color = '#aaaaaa'
-icon_color_active = '#1f6aa5'
 highlight_color = '#ff8c00'
 default_font = "Arial"
 default_font_size = "12pt"
-
-QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True) # enable highdpi scaling
-QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True) # use highdpi icons
 
 # Helper functions
 
@@ -90,57 +84,56 @@ class MainWindow(QtWidgets.QMainWindow):
         
         # Editor:        
         self.editor = QtWidgets.QTextEdit()
-        self.editor.setStyleSheet("QTextEdit {color: #000000; background-color: #ffffff; border: 0px;} QScrollBar::handle {background: #1f6aa5;}")
+        palette = self.palette()
+        default_background_color = palette.color(palette.ColorRole.Button)
+        self.editor.setStyleSheet("QTextEdit {color: #000000; background-color: #ffffff; border: 0px;} QScrollBar::handle {background: " + default_background_color.name() + "}")
         self.editor.setAcceptRichText(True)
-        self.editor.setAutoFormatting(QtWidgets.QTextEdit.AutoNone)
+        self.editor.setAutoFormatting(QtWidgets.QTextEdit.AutoFormattingFlag.AutoNone)
         self.editor.cursorPositionChanged.connect(self.cursor_changed)
         self.editor.selectionChanged.connect(self.cursor_changed)
         font = QtGui.QFont(default_font, 11)
         self.editor.setFont(font)
         layout.addWidget(self.editor)
         container = QtWidgets.QWidget()
-        container.setStyleSheet("background-color: #ffffff; border-top: 1px solid #474747; border-bottom: 1px solid #474747")
+        container.setStyleSheet("background-color: #ffffff;")
         container.setLayout(layout)
         self.setCentralWidget(container)
 
         # Status Bar
         self.status = QtWidgets.QStatusBar()
-        self.status.setStyleSheet("background-color: #2b2b2b; border: 0px solid #474747")
+        self.status.setStyleSheet("border: 0px")
         self.timestamp_status = QtWidgets.QLabel('')
         self.timestamp_status.setMinimumWidth(130)
         self.timestamp_status.setStyleSheet("border-left: 2px solid #474747; ")
-        self.timestamp_status.setAlignment(QtCore.Qt.AlignCenter)
+        self.timestamp_status.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.status.addPermanentWidget(self.timestamp_status)
         self.setStatusBar(self.status)
 
         # Toolbar
         
         # self.menuBar().setNativeMenuBar(False) # Uncomment to disable native menubar on Mac
-        toolbar_stylesheet = "QToolBar {background-color: #2b2b2b; border-bottom: 0px  solid #474747; margin: 4px; } QToolButton:hover {background-color: #1f6aa5} QToolButton:checked {background-color: #474747}"
-
         file_toolbar = QtWidgets.QToolBar("File")
         file_toolbar.setMovable(False)
         file_toolbar.setIconSize(QtCore.QSize(24, 24))
-        file_toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly)
-        file_toolbar.setStyleSheet(toolbar_stylesheet)
+        file_toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.addToolBar(file_toolbar)
         file_menu = self.menuBar().addMenu("&File")
 
-        open_file_action = QtWidgets.QAction(qta.icon('fa5s.folder-open', color=icon_color), "Open file...", self)
+        open_file_action = QtGui.QAction(qta.icon('mdi.folder-open', color=icon_color), "Open file...", self)
         open_file_action.setStatusTip("Open file")
         open_file_action.setShortcut(QtGui.QKeySequence.Open)
         open_file_action.triggered.connect(self.file_open)
         file_menu.addAction(open_file_action)
         file_toolbar.addAction(open_file_action)
 
-        save_file_action = QtWidgets.QAction(qta.icon('fa5s.save', color=icon_color), "Save", self)
+        save_file_action = QtGui.QAction(qta.icon('mdi.content-save', color=icon_color), "Save", self)
         save_file_action.setStatusTip("Save current file")
         save_file_action.setShortcut(QtGui.QKeySequence.Save)
         save_file_action.triggered.connect(self.file_save)
         file_menu.addAction(save_file_action)
         file_toolbar.addAction(save_file_action)
 
-        saveas_file_action = QtWidgets.QAction(qta.icon('fa5.save', color=icon_color), "Save As...", self)
+        saveas_file_action = QtGui.QAction(qta.icon('mdi.content-save-move', color=icon_color), "Save As...", self)
         saveas_file_action.setStatusTip("Save current file to specified file")
         saveas_file_action.triggered.connect(self.file_saveas)
         file_menu.addAction(saveas_file_action)
@@ -148,7 +141,7 @@ class MainWindow(QtWidgets.QMainWindow):
         
         file_menu.addSeparator()
         
-        audio_source_action = QtWidgets.QAction(qta.icon('fa5s.file-audio', color=icon_color), "Audio source...", self)
+        audio_source_action = QtGui.QAction(qta.icon('mdi.waveform', color=icon_color), "Audio source...", self)
         audio_source_action.setStatusTip("Locate the audio source file of the current transcript")
         audio_source_action.triggered.connect(self.open_audio_source)
         file_menu.addAction(audio_source_action)
@@ -158,11 +151,10 @@ class MainWindow(QtWidgets.QMainWindow):
         noScribe_toolbar.setMovable(False)
         noScribe_toolbar.setIconSize(QtCore.QSize(24, 24))
         noScribe_toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
-        noScribe_toolbar.setStyleSheet(toolbar_stylesheet)
         self.addToolBar(noScribe_toolbar)
         # noScribe_menu = self.menuBar().addMenu("no&Scribe")
        
-        self.play_along_action = QtWidgets.QAction(qta.icon('fa5s.volume-down', color=highlight_color), "Play/Pause Audio", self)      
+        self.play_along_action = QtGui.QAction(qta.icon('mdi.volume-high', color=highlight_color), "Play/Pause Audio", self)      
         self.play_along_action.setCheckable(True)
         self.play_along_action.setStatusTip("Listen to the audio source of the current text")
         self.play_along_action.setShortcut(QtGui.QKeySequence('Ctrl+Space'))
@@ -181,21 +173,20 @@ class MainWindow(QtWidgets.QMainWindow):
         edit_toolbar.setMovable(False)
         edit_toolbar.setIconSize(QtCore.QSize(24, 24))
         edit_toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly)
-        edit_toolbar.setStyleSheet(toolbar_stylesheet)
         self.addToolBar(edit_toolbar)
         edit_menu = self.menuBar().addMenu("&Edit")
 
         edit_menu.addAction(self.play_along_action)
         edit_menu.addSeparator()
 
-        undo_action = QtWidgets.QAction(qta.icon('fa5s.undo', color=icon_color), "Undo", self)
+        undo_action = QtGui.QAction(qta.icon('mdi.undo', color=icon_color), "Undo", self)
         undo_action.setStatusTip("Undo last change")
         undo_action.setShortcut(QtGui.QKeySequence.Undo)
         undo_action.triggered.connect(self.editor.undo)
         edit_toolbar.addAction(undo_action)
         edit_menu.addAction(undo_action)
 
-        redo_action = QtWidgets.QAction(qta.icon('fa5s.redo', color=icon_color), "Redo", self)
+        redo_action = QtGui.QAction(qta.icon('mdi.redo', color=icon_color), "Redo", self)
         redo_action.setStatusTip("Redo last change")
         redo_action.setShortcut(QtGui.QKeySequence.Redo)
         redo_action.triggered.connect(self.editor.redo)
@@ -204,28 +195,28 @@ class MainWindow(QtWidgets.QMainWindow):
 
         edit_menu.addSeparator()
 
-        cut_action = QtWidgets.QAction(qta.icon('fa5s.cut', color=icon_color), "Cut", self)
+        cut_action = QtGui.QAction(qta.icon('mdi.content-cut', color=icon_color), "Cut", self)
         cut_action.setStatusTip("Cut selected text")
         cut_action.setShortcut(QtGui.QKeySequence.Cut)
         cut_action.triggered.connect(self.editor.cut)
         edit_toolbar.addAction(cut_action)
         edit_menu.addAction(cut_action)
 
-        copy_action = QtWidgets.QAction(qta.icon('fa5s.copy', color=icon_color), "Copy", self)
+        copy_action = QtGui.QAction(qta.icon('mdi.content-copy', color=icon_color), "Copy", self)
         copy_action.setStatusTip("Copy selected text")
         copy_action.setShortcut(QtGui.QKeySequence.Copy)
         copy_action.triggered.connect(self.editor.copy)
         edit_toolbar.addAction(copy_action)
         edit_menu.addAction(copy_action)
 
-        paste_action = QtWidgets.QAction(qta.icon('fa5s.paste', color=icon_color), "Paste", self)
+        paste_action = QtGui.QAction(qta.icon('mdi.content-paste', color=icon_color), "Paste", self)
         paste_action.setStatusTip("Paste from clipboard")
         paste_action.setShortcut(QtGui.QKeySequence.Paste)
         paste_action.triggered.connect(self.editor.paste)
         edit_toolbar.addAction(paste_action)
         edit_menu.addAction(paste_action)
 
-        select_action = QtWidgets.QAction("Select all", self)
+        select_action = QtGui.QAction("Select all", self)
         select_action.setStatusTip("Select all text")
         select_action.setShortcut(QtGui.QKeySequence.SelectAll)
         select_action.triggered.connect(self.editor.selectAll)
@@ -233,31 +224,44 @@ class MainWindow(QtWidgets.QMainWindow):
 
         edit_menu.addSeparator()
         
-        zoomIn_action = QtWidgets.QAction(qta.icon('fa5s.search-plus', color=icon_color), "Zoom in", self)
+        self.find_action = QtGui.QAction(qta.icon('mdi.text-search', color=icon_color), "Find", self)
+        self.find_action.setStatusTip("Find (and replace) text")
+        self.find_action.setShortcut(QtGui.QKeySequence.Find)
+        self.find_action.triggered.connect(self.open_find_replace_dialog)
+        edit_toolbar.addAction(self.find_action)
+        edit_menu.addAction(self.find_action)
+
+        self.replace_action = QtGui.QAction("Replace", self)
+        self.replace_action.setStatusTip("Find and replace text")
+        self.replace_action.setShortcut(QtGui.QKeySequence("Ctrl+H"))
+        self.replace_action.triggered.connect(self.open_find_replace_dialog)
+        edit_menu.addAction(self.replace_action)           
+        
+        edit_menu.addSeparator()
+        
+        zoomIn_action = QtGui.QAction(qta.icon('mdi.magnify-plus-outline', color=icon_color), "Zoom in", self)
         zoomIn_action.setStatusTip("Zoom in")
         zoomIn_action.setShortcut(QtGui.QKeySequence.ZoomIn)
         zoomIn_action.triggered.connect(self.editor.zoomIn)
         edit_toolbar.addAction(zoomIn_action)
         edit_menu.addAction(zoomIn_action)
 
-        zoomOut_action = QtWidgets.QAction(qta.icon('fa5s.search-minus', color=icon_color), "Zoom out", self)
+        zoomOut_action = QtGui.QAction(qta.icon('mdi.magnify-minus-outline', color=icon_color), "Zoom out", self)
         zoomOut_action.setStatusTip("Zoom out")
         zoomOut_action.setShortcut(QtGui.QKeySequence.ZoomOut)
         zoomOut_action.triggered.connect(self.editor.zoomOut)
         edit_toolbar.addAction(zoomOut_action)
         edit_menu.addAction(zoomOut_action)
 
-
         format_toolbar = QtWidgets.QToolBar("Format")
         format_toolbar.setMovable(False)
         format_toolbar.setIconSize(QtCore.QSize(24, 24))
         format_toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly)
-        format_toolbar.setStyleSheet(toolbar_stylesheet)
         self.addToolBar(format_toolbar)
         format_menu = self.menuBar().addMenu("&Format")
 
         # We need references to these actions/settings to update as selection changes, so attach to self.
-        self.bold_action = QtWidgets.QAction(qta.icon('fa5s.bold', color=icon_color), "Bold", self)
+        self.bold_action = QtGui.QAction(qta.icon('mdi.format-bold', color=icon_color), "Bold", self)
         self.bold_action.setStatusTip("Bold")
         self.bold_action.setShortcut(QtGui.QKeySequence.Bold)
         self.bold_action.setCheckable(True)
@@ -265,7 +269,7 @@ class MainWindow(QtWidgets.QMainWindow):
         format_toolbar.addAction(self.bold_action)
         format_menu.addAction(self.bold_action)
 
-        self.italic_action = QtWidgets.QAction(qta.icon('fa5s.italic', color=icon_color), "Italic", self)
+        self.italic_action = QtGui.QAction(qta.icon('mdi.format-italic', color=icon_color), "Italic", self)
         self.italic_action.setStatusTip("Italic")
         self.italic_action.setShortcut(QtGui.QKeySequence.Italic)
         self.italic_action.setCheckable(True)
@@ -273,7 +277,7 @@ class MainWindow(QtWidgets.QMainWindow):
         format_toolbar.addAction(self.italic_action)
         format_menu.addAction(self.italic_action)
 
-        self.underline_action = QtWidgets.QAction(qta.icon('fa5s.underline', color=icon_color), "Underline", self)
+        self.underline_action = QtGui.QAction(qta.icon('mdi.format-underline', color=icon_color), "Underline", self)
         self.underline_action.setStatusTip("Underline")
         self.underline_action.setShortcut(QtGui.QKeySequence.Underline)
         self.underline_action.setCheckable(True)
@@ -283,35 +287,35 @@ class MainWindow(QtWidgets.QMainWindow):
 
         format_menu.addSeparator()
 
-        self.alignl_action = QtWidgets.QAction(qta.icon('fa5s.align-left', color=icon_color), "Align left", self)
+        self.alignl_action = QtGui.QAction(qta.icon('mdi.format-align-left', color=icon_color), "Align left", self)
         self.alignl_action.setStatusTip("Align text left")
         self.alignl_action.setCheckable(True)
         self.alignl_action.triggered.connect(lambda: self.editor.setAlignment(QtCore.Qt.AlignLeft))
         format_toolbar.addAction(self.alignl_action)
         format_menu.addAction(self.alignl_action)
 
-        self.alignc_action = QtWidgets.QAction(qta.icon('fa5s.align-center', color=icon_color), "Align center", self)
+        self.alignc_action = QtGui.QAction(qta.icon('mdi.format-align-center', color=icon_color), "Align center", self)
         self.alignc_action.setStatusTip("Align text center")
         self.alignc_action.setCheckable(True)
         self.alignc_action.triggered.connect(lambda: self.editor.setAlignment(QtCore.Qt.AlignCenter))
         format_toolbar.addAction(self.alignc_action)
         format_menu.addAction(self.alignc_action)
 
-        self.alignr_action = QtWidgets.QAction(qta.icon('fa5s.align-right', color=icon_color), "Align right", self)
+        self.alignr_action = QtGui.QAction(qta.icon('mdi.format-align-right', color=icon_color), "Align right", self)
         self.alignr_action.setStatusTip("Align text right")
         self.alignr_action.setCheckable(True)
         self.alignr_action.triggered.connect(lambda: self.editor.setAlignment(QtCore.Qt.AlignRight))
         format_toolbar.addAction(self.alignr_action)
         format_menu.addAction(self.alignr_action)
 
-        self.alignj_action = QtWidgets.QAction(qta.icon('fa5s.align-justify', color=icon_color), "Justify", self)
+        self.alignj_action = QtGui.QAction(qta.icon('mdi.format-align-justify', color=icon_color), "Justify", self)
         self.alignj_action.setStatusTip("Justify text")
         self.alignj_action.setCheckable(True)
         self.alignj_action.triggered.connect(lambda: self.editor.setAlignment(QtCore.Qt.AlignJustify))
         format_toolbar.addAction(self.alignj_action)
         format_menu.addAction(self.alignj_action)
 
-        format_group = QtWidgets.QActionGroup(self)
+        format_group = QtGui.QActionGroup(self)
         format_group.setExclusive(True)
         format_group.addAction(self.alignl_action)
         format_group.addAction(self.alignc_action)
@@ -326,13 +330,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self.italic_action,
             self.underline_action,
             # We don't need to disable signals for alignment, as they are paragraph-wide.
-        ]        
-        
+        ]     
+                
         # Initialize.
         self.cursor_changed()
         self.update_title()
         self.setWindowIcon(QtGui.QIcon(os.path.join(app_dir, 'noScribeEditLogo.png')))
-        self.setStyleSheet("* {background-color: #2b2b2b;} QPushButton {background-color: #474747; }")
 
         # make the window at least 700 x 900
         if self.height() < 700:
@@ -860,15 +863,162 @@ class MainWindow(QtWidgets.QMainWindow):
     def update_title(self):
         self.setWindowTitle("%s - noScribeEdit" % (os.path.basename(self.path) if self.path else "Untitled"))
 
+    def open_find_replace_dialog(self):
+        self.search_replace_dialog = SearchAndReplaceDialog(self)
+        self.search_replace_dialog.show()
+        
+    def highlight_matches(self, text, case_sensitive, whole_word):
+        selections = []  # List to hold the extra selections
+
+        # Define the highlight format
+        highlight_format = QtGui.QTextCharFormat()
+        highlight_format.setBackground(QtGui.QBrush(QtGui.QColor("#ffff00")))  # Yellow highlight
+
+        # Set the appropriate search flags
+        flags = QtGui.QTextDocument.FindFlag(0)
+        if case_sensitive:
+            flags |= QtGui.QTextDocument.FindCaseSensitively
+        if whole_word:
+            flags |= QtGui.QTextDocument.FindWholeWords
+
+        # Start the search from the beginning of the document
+        cursor = self.editor.textCursor()
+        cursor.setPosition(0)
+        document = self.editor.document()
+
+        # Search for the text and collect selections to highlight
+        while not cursor.isNull() and not cursor.atEnd():
+            cursor = document.find(text, cursor, flags)
+            if cursor.isNull():
+                break  # Exit if no more matches found
+
+            # Create an extra selection for each match
+            selection = QtWidgets.QTextEdit.ExtraSelection()
+            selection.format = highlight_format
+            selection.cursor = cursor
+            selections.append(selection)
+
+        # Apply all the selections to the editor
+        self.editor.setExtraSelections(selections)
+        
+    def remove_highlight_matches(self):
+        # Clear extra selections to remove highlights
+        self.editor.setExtraSelections([])
+    
+    def find_next(self, text, case_sensitive, whole_word):
+        flags = QtGui.QTextDocument.FindFlag(0)
+        if case_sensitive:
+            flags |= QtGui.QTextDocument.FindCaseSensitively
+        if whole_word:
+            flags |= QtGui.QTextDocument.FindWholeWords
+
+        document = self.editor.document()
+        cursor = self.editor.textCursor()
+        found_cursor = document.find(text, cursor, flags)
+
+        if found_cursor.isNull():
+            # Ask if the user wants to continue searching from the top.
+            ret = QtWidgets.QMessageBox.question(
+                self, "Find", "Reached the end of the document. Continue from the beginning?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No
+            )
+
+            if ret == QtWidgets.QMessageBox.Yes:
+                # Search from the beginning
+                start_cursor = QtGui.QTextCursor(document)
+                found_cursor = document.find(text, start_cursor, flags)
+                if found_cursor.isNull():
+                    QtWidgets.QMessageBox.information(
+                        self, "Find", "No more occurrences found."
+                    )
+                    return
+            else:
+                return
+
+        self.editor.setTextCursor(found_cursor)
+        self.editor.ensureCursorVisible()
+        # reposition the dialog if it overlaps the cursor
+        self.reposition_dialog_if_necessary()
+            
+    def replace(self, text, replace_with, case_sensitive, whole_word):
+        cursor = self.editor.textCursor()
+        if cursor.hasSelection():
+            selected_text = cursor.selectedText()
+            if (case_sensitive and selected_text == text) or (not case_sensitive and selected_text.lower() == text.lower()):
+                cursor.insertText(replace_with)
+                self.editor.setTextCursor(cursor)
+        self.find_next(text, case_sensitive, whole_word)
+        QtWidgets.QApplication.processEvents()
+
+    def replace_all(self, text, replace_with, case_sensitive, whole_word):
+        flags = QtGui.QTextDocument.FindFlag(0)
+        if case_sensitive:
+            flags |= QtGui.QTextDocument.FindCaseSensitively
+        if whole_word:
+            flags |= QtGui.QTextDocument.FindWholeWords
+
+        cursor = self.editor.textCursor()
+        cursor.beginEditBlock()
+
+        while True:
+            cursor = self.editor.document().find(text, cursor, flags)
+            if cursor.isNull():
+                break
+            cursor.insertText(replace_with)
+
+        cursor.endEditBlock()
+        
+        QtWidgets.QApplication.processEvents()
+        cursor.clearSelection()
+        self.editor.setTextCursor(cursor)     
+        
+    def reposition_dialog_if_necessary(self):
+        if not self.search_replace_dialog.isVisible():
+            return
+
+        # Get the cursor rectangle and map it to global coordinates
+        cursor_rect = self.editor.cursorRect()
+        cursor_global_top_left = self.editor.mapToGlobal(cursor_rect.topLeft())
+        cursor_global_bottom_right = self.editor.mapToGlobal(cursor_rect.bottomRight())
+        cursor_global_rect = QtCore.QRect(cursor_global_top_left, cursor_global_bottom_right)
+
+        # Get the dialog and screen geometry
+        dialog_rect = self.search_replace_dialog.geometry()
+
+        screen_geometry = QtWidgets.QApplication.instance().primaryScreen().geometry()
+
+        # Check if the dialog overlaps the cursor
+        if dialog_rect.intersects(cursor_global_rect):
+            # Calculate new position to move the dialog out of the way
+            new_x = dialog_rect.x()
+            new_y = dialog_rect.y()
+
+            # Move the dialog horizontally or vertically depending on space
+            if cursor_global_rect.right() + dialog_rect.width() < screen_geometry.width():
+                # Move dialog to the right of the text cursor
+                new_x = cursor_global_rect.right() + 10
+            elif cursor_global_rect.left() - dialog_rect.width() > 0:
+                # Move dialog to the left of the text cursor
+                new_x = cursor_global_rect.left() - dialog_rect.width() - 10
+
+            if cursor_global_rect.bottom() + dialog_rect.height() < screen_geometry.height():
+                # Move dialog below the text cursor
+                new_y = cursor_global_rect.bottom() + 10
+            elif cursor_global_rect.top() - dialog_rect.height() > 0:
+                # Move dialog above the text cursor
+                new_y = cursor_global_rect.top() - dialog_rect.height() - 10
+
+            # Ensure the dialog remains within screen bounds
+            new_x = max(min(new_x, screen_geometry.width() - dialog_rect.width()), 0)
+            new_y = max(min(new_y, screen_geometry.height() - dialog_rect.height()), 0)
+
+            self.search_replace_dialog.move(new_x, new_y)
+        
 if __name__ == '__main__':
 
     app = QtWidgets.QApplication(sys.argv)
     app.setApplicationName("noScribeEdit")
-    # setup stylesheet
-    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
-
+    app.setStyle("Fusion")
     window = MainWindow()
-    if platform.system() == 'Windows':
-        pywinstyles.apply_style(window, 'mica')  
     
     app.exec_()

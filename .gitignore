@@ -3,6 +3,7 @@ build/
 dist/
 Test/
 .vscode/
+__pycache__/
 
 *.code-workspace
 ffplay_test.py
