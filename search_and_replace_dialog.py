@@ -69,13 +69,15 @@ class SearchAndReplaceDialog(QtWidgets.QDialog):
         case_sensitive = self.case_sensitive_checkbox.isChecked()
         whole_word = self.whole_word_checkbox.isChecked()
         self.parent().replace(search_text, replace_text, case_sensitive, whole_word)
-
+        self.highlight_all()
+        
     def replace_all(self):
         search_text = self.search_input.text()
         replace_text = self.replace_input.text()
         case_sensitive = self.case_sensitive_checkbox.isChecked()
         whole_word = self.whole_word_checkbox.isChecked()
         self.parent().replace_all(search_text, replace_text, case_sensitive, whole_word)
+        self.highlight_all()
 
     def highlight_all(self):
         text = self.search_input.text()

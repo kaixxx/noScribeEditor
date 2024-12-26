@@ -91,6 +91,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.editor.setAutoFormatting(QtWidgets.QTextEdit.AutoFormattingFlag.AutoNone)
         self.editor.cursorPositionChanged.connect(self.cursor_changed)
         self.editor.selectionChanged.connect(self.cursor_changed)
+        self.editor.installEventFilter(EnterKeyFilter(self.editor))
         font = QtGui.QFont(default_font, 11)
         self.editor.setFont(font)
         layout.addWidget(self.editor)
@@ -837,8 +838,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.play_along_action.blockSignals(True) 
             self.play_along_action.setChecked(False)
             self.play_along_action.blockSignals(False)
-            self.cursor_changed()
-            
+            self.cursor_changed()           
+
     def closeEvent(self, event):
         self.keep_playing = False
                     
@@ -958,20 +959,13 @@ class MainWindow(QtWidgets.QMainWindow):
             flags |= QtGui.QTextDocument.FindWholeWords
 
         cursor = self.editor.textCursor()
-        cursor.beginEditBlock()
 
         while True:
             cursor = self.editor.document().find(text, cursor, flags)
             if cursor.isNull():
                 break
             cursor.insertText(replace_with)
-
-        cursor.endEditBlock()
-        
-        QtWidgets.QApplication.processEvents()
-        cursor.clearSelection()
-        self.editor.setTextCursor(cursor)     
-        
+                
     def reposition_dialog_if_necessary(self):
         if not self.search_replace_dialog.isVisible():
             return
@@ -1013,6 +1007,51 @@ class MainWindow(QtWidgets.QMainWindow):
             new_y = max(min(new_y, screen_geometry.height() - dialog_rect.height()), 0)
 
             self.search_replace_dialog.move(new_x, new_y)
+            
+class EnterKeyFilter(QtCore.QObject):
+    def __init__(self, editor):
+        super().__init__(editor)
+        self.editor = editor
+
+    def eventFilter(self, watched, event):
+        if event.type() == QtCore.QEvent.Type.KeyPress and event.key() == QtCore.Qt.Key.Key_Return:
+            cursor = self.editor.textCursor()
+
+            # Get the current block text and the position
+            start_pos = cursor.position()
+            cursor.select(QtGui.QTextCursor.SelectionType.BlockUnderCursor)
+            current_block_text = cursor.selectedText()
+            cursor.setPosition(start_pos)
+
+            # Retrieve the speaker label from the previous block
+            speaker_label = ''
+            cursor.movePosition(QtGui.QTextCursor.MoveOperation.StartOfBlock)
+            if cursor.movePosition(QtGui.QTextCursor.MoveOperation.PreviousBlock):
+                previous_block_text = cursor.block().text()
+                if ':' in previous_block_text:
+                    # Find the speaker label in the previous block
+                    speaker_label = previous_block_text.split(':')[0]
+                
+            # Go back to the original cursor position, insert line break and speaker
+            cursor.setPosition(start_pos)
+                
+            if speaker_label != '':
+                cursor.insertText(f"\n{speaker_label}: ")
+            else: 
+                cursor.insertText('\n')
+            
+            # Update the cursor position after modifications
+            cursor.movePosition(QtGui.QTextCursor.MoveOperation.StartOfBlock)
+            cursor.movePosition(QtGui.QTextCursor.MoveOperation.Right, 
+                                QtGui.QTextCursor.MoveMode.KeepAnchor, 
+                                len(speaker_label))
+            self.editor.setTextCursor(cursor)
+
+            return True  # Event is handled
+
+        # Pass the event on to the parent class if it's not an Enter key press
+        return QtCore.QObject.eventFilter(self, watched, event)           
+
         
 if __name__ == '__main__':
 
