@@ -6,5 +6,6 @@ Test/
 
 *.code-workspace
 ffplay_test.py
+tmp*.*
 
 .DS_Store
