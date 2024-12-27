@@ -7,9 +7,9 @@ block_cipher = None
 a = Analysis(
     ['noScribeEdit.py'],
     pathex=[],
-    binaries=[('C:/Users/kai/Documents/Programmierung/2023_WhisperTranscribe/noScribeEditor/ffmpeg_win/ffmpeg.exe','ffmpeg_win'),
-        ('C:/Users/kai/Documents/Programmierung/2023_WhisperTranscribe/noScribeEditor/ffmpeg_win/ffplay.exe','ffmpeg_win')],
-    datas=[('C:/Users/kai/Documents/Programmierung/2023_WhisperTranscribe/noScribeEditor/noScribeEditLogo.png', '.')],
+    binaries=[('./ffmpeg_win/ffmpeg.exe','ffmpeg_win'),
+        ('./ffmpeg_win/ffplay.exe','ffmpeg_win')],
+    datas=[('noScribeEditLogo.png', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

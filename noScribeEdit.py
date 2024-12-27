@@ -141,6 +141,7 @@ class MainWindow(QtWidgets.QMainWindow):
         #file_toolbar.addAction(saveas_file_action)
         
         file_menu.addSeparator()
+        file_toolbar.addSeparator()
         
         audio_source_action = QtGui.QAction(qta.icon('mdi.waveform', color=icon_color), "Audio source...", self)
         audio_source_action.setStatusTip("Locate the audio source file of the current transcript")
@@ -195,6 +196,7 @@ class MainWindow(QtWidgets.QMainWindow):
         edit_menu.addAction(redo_action)
 
         edit_menu.addSeparator()
+        edit_toolbar.addSeparator()
 
         cut_action = QtGui.QAction(qta.icon('mdi.content-cut', color=icon_color), "Cut", self)
         cut_action.setStatusTip("Cut selected text")
@@ -224,30 +226,27 @@ class MainWindow(QtWidgets.QMainWindow):
         edit_menu.addAction(select_action)
 
         edit_menu.addSeparator()
+        edit_toolbar.addSeparator()
         
-        self.find_action = QtGui.QAction(qta.icon('mdi.text-search', color=icon_color), "Find", self)
-        self.find_action.setStatusTip("Find (and replace) text")
-        self.find_action.setShortcut(QtGui.QKeySequence.Find)
-        self.find_action.triggered.connect(self.open_find_replace_dialog)
-        edit_toolbar.addAction(self.find_action)
-        edit_menu.addAction(self.find_action)
-
-        self.replace_action = QtGui.QAction("Replace", self)
-        self.replace_action.setStatusTip("Find and replace text")
-        self.replace_action.setShortcut(QtGui.QKeySequence("Ctrl+H"))
-        self.replace_action.triggered.connect(self.open_find_replace_dialog)
-        edit_menu.addAction(self.replace_action)           
-        
+        find_action = QtGui.QAction(qta.icon('mdi.magnify', color=icon_color), "Find and Replace", self)
+        find_action.setStatusTip("Find (and replace) text")
+        find_action.setToolTip("Find (and replace) text")
+        find_action.setShortcut(QtGui.QKeySequence.Find)
+        find_action.triggered.connect(self.open_find_replace_dialog)
+        edit_toolbar.addAction(find_action)
+        edit_menu.addAction(find_action)
+                
         edit_menu.addSeparator()
+        edit_toolbar.addSeparator()
         
-        zoomIn_action = QtGui.QAction(qta.icon('mdi.magnify-plus-outline', color=icon_color), "Zoom in", self)
+        zoomIn_action = QtGui.QAction(qta.icon('mdi.plus-circle-outline', color=icon_color), "Zoom in", self)
         zoomIn_action.setStatusTip("Zoom in")
         zoomIn_action.setShortcut(QtGui.QKeySequence.ZoomIn)
         zoomIn_action.triggered.connect(self.editor.zoomIn)
         edit_toolbar.addAction(zoomIn_action)
         edit_menu.addAction(zoomIn_action)
 
-        zoomOut_action = QtGui.QAction(qta.icon('mdi.magnify-minus-outline', color=icon_color), "Zoom out", self)
+        zoomOut_action = QtGui.QAction(qta.icon('mdi.minus-circle-outline', color=icon_color), "Zoom out", self)
         zoomOut_action.setStatusTip("Zoom out")
         zoomOut_action.setShortcut(QtGui.QKeySequence.ZoomOut)
         zoomOut_action.triggered.connect(self.editor.zoomOut)
@@ -287,6 +286,7 @@ class MainWindow(QtWidgets.QMainWindow):
         format_menu.addAction(self.underline_action)
 
         format_menu.addSeparator()
+        format_toolbar.addSeparator()
 
         self.alignl_action = QtGui.QAction(qta.icon('mdi.format-align-left', color=icon_color), "Align left", self)
         self.alignl_action.setStatusTip("Align text left")
@@ -324,6 +324,7 @@ class MainWindow(QtWidgets.QMainWindow):
         format_group.addAction(self.alignj_action)
 
         format_menu.addSeparator()
+        format_toolbar.addSeparator()
         
         # A list of all format-related widgets/actions, so we can disable/enable signals when updating.
         self._format_actions = [
@@ -907,6 +908,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.editor.setExtraSelections([])
     
     def find_next(self, text, case_sensitive, whole_word):
+        if text == '':
+            self.dialog_critical('Search text is empty!')
+            return
         flags = QtGui.QTextDocument.FindFlag(0)
         if case_sensitive:
             flags |= QtGui.QTextDocument.FindCaseSensitively
@@ -952,19 +956,20 @@ class MainWindow(QtWidgets.QMainWindow):
         QtWidgets.QApplication.processEvents()
 
     def replace_all(self, text, replace_with, case_sensitive, whole_word):
+        if text == '':
+            self.dialog_critical('Search text is empty!')
+            return
         flags = QtGui.QTextDocument.FindFlag(0)
         if case_sensitive:
             flags |= QtGui.QTextDocument.FindCaseSensitively
         if whole_word:
             flags |= QtGui.QTextDocument.FindWholeWords
 
-        cursor = self.editor.textCursor()
-
-        while True:
-            cursor = self.editor.document().find(text, cursor, flags)
-            if cursor.isNull():
-                break
-            cursor.insertText(replace_with)
+        start_cursor = QtGui.QTextCursor(self.editor.document())
+        found_cursor = self.editor.document().find(text, start_cursor, flags)
+        while not found_cursor.isNull():            
+            found_cursor.insertText(replace_with)
+            found_cursor = self.editor.document().find(text, found_cursor, flags)
                 
     def reposition_dialog_if_necessary(self):
         if not self.search_replace_dialog.isVisible():
