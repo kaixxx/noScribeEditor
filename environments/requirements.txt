@@ -1,6 +1,5 @@
 qtawesome
 pyqt6
-ffpyplayer
 AdvancedHTMLParser
 pillow
 pyinstaller
