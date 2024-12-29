@@ -66,6 +66,83 @@ def timestamp_to_string(start, stop):
     # returns "HH:MM:SS - HH:MM:SS"    
     return ms_to_str(start) + ' - ' + ms_to_str(stop)
 
+# Helper for text only output
+        
+def html_node_to_text(node: AdvancedHTMLParser.AdvancedTag) -> str:
+    """
+    Recursively get all text from a html node and its children. 
+    """
+    # For text nodes, return their value directly
+    if AdvancedHTMLParser.isTextNode(node): # node.nodeType == node.TEXT_NODE:
+        return node
+    # For element nodes, recursively process their children
+    elif AdvancedHTMLParser.isTagNode(node):
+        text_parts = []
+        for child in node.childBlocks:
+            text = html_node_to_text(child)
+            if text:
+                text_parts.append(text)
+        # For block-level elements, prepend and append newlines
+        if node.tagName.lower() in ['p', 'div', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'br']:
+            if node.tagName.lower() == 'br':
+                return '\n'
+            else:
+                return '\n' + ''.join(text_parts).strip() + '\n'
+        else:
+            return ''.join(text_parts)
+    else:
+        return ''
+
+def html_to_text(parser: AdvancedHTMLParser.AdvancedHTMLParser) -> str:
+    return html_node_to_text(parser.body)
+
+# Helper for WebVTT output
+
+def vtt_escape(txt: str) -> str:
+    txt = txt.replace('&', '&amp;')
+    txt = txt.replace('<', '&lt;')
+    txt = txt.replace('>', '&gt;')
+    while txt.find('\n\n') > -1:
+        txt = txt.replace('\n\n', '\n')
+    return txt    
+
+def ms_to_webvtt(milliseconds) -> str:
+    """converts milliseconds to the time stamp of WebVTT (HH:MM:SS.mmm)
+    """
+    # 1 hour = 3600000 milliseconds
+    # 1 minute = 60000 milliseconds
+    # 1 second = 1000 milliseconds
+    hours, milliseconds = divmod(milliseconds, 3600000)
+    minutes, milliseconds = divmod(milliseconds, 60000)
+    seconds, milliseconds = divmod(milliseconds, 1000)
+    return "{:02d}:{:02d}:{:02d}.{:03d}".format(hours, minutes, seconds, milliseconds)
+
+def html_to_webvtt(parser: AdvancedHTMLParser.AdvancedHTMLParser, media_path: str):
+    vtt = 'WEBVTT '
+    paragraphs = parser.getElementsByTagName('p')
+    # The first paragraph contains the title
+    vtt += vtt_escape(paragraphs[0].textContent) + '\n\n'
+    # Next paragraph contains info about the transcript. Add as a note.
+    vtt += vtt_escape('NOTE\n' + html_node_to_text(paragraphs[1])) + '\n\n'
+    # Add media source:
+    vtt += f'NOTE media: {media_path}\n\n'
+
+    #Add all segments as VTT cues
+    segments = parser.getElementsByTagName('a')
+    i = 0
+    for i in range(len(segments)):
+        segment = segments[i]
+        name = segment.attributes['name']
+        if name is not None:
+            name_elems = name.split('_', 4)
+            if len(name_elems) > 1 and name_elems[0] == 'ts':
+                start = ms_to_webvtt(int(name_elems[1]))
+                end = ms_to_webvtt(int(name_elems[2]))
+                spkr = name_elems[3]
+                txt = vtt_escape(html_node_to_text(segment))
+                vtt += f'{i+1}\n{start} --> {end}\n<v {spkr}>{txt.lstrip()}\n\n'
+    return vtt
+
 class MainWindow(QtWidgets.QMainWindow):
 
     def __init__(self, *args, **kwargs):
@@ -576,16 +653,33 @@ class MainWindow(QtWidgets.QMainWindow):
             child.remove()
             div_tag.appendChild(child)
         parser.body.appendChild(div_tag)
-            
+ 
         # reset zoom (font-size):
         parser.body.setStyle("font-size", "")
 
         htmlStr = parser.asHTML()
         # replace "small" font size by "0.8em" (for word): 
         htmlStr = htmlStr.replace('font-size: small', 'font-size: 0.8em')
+        while htmlStr.find('\n\n') > -1:
+            htmlStr = htmlStr.replace('\n\n', '\n')
         
+        file_ext = os.path.splitext(path)[1][1:]
+        if file_ext == 'html':
+            file_txt = htmlStr
+        elif file_ext == 'txt':
+            d = AdvancedHTMLParser.AdvancedHTMLParser()
+            d.parseStr(htmlStr)
+            file_txt = html_to_text(d)
+        elif file_ext == 'vtt':
+            d = AdvancedHTMLParser.AdvancedHTMLParser()
+            d.parseStr(htmlStr)
+            media_path = self.audio_source if self.audio_source is not None else ''
+            file_txt = html_to_webvtt(d, media_path)
+        else:
+            raise TypeError(f'Invalid file type "{self.file_ext}".')
+
         with open(path, 'w', encoding="utf-8") as f:
-            f.write(htmlStr)
+            f.write(file_txt)
         self.editor.document().setModified(False)
             
     def file_save(self):
@@ -599,8 +693,15 @@ class MainWindow(QtWidgets.QMainWindow):
             self.dialog_critical(str(e))
 
     def file_saveas(self):
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save file", "", "noScribe Transcripts (*.html)")
-        if path == "": # cancled
+        filter_string = (
+            "noScribe Transcript (*.html);;"
+            "Text only (*.txt);;"
+            "WebVTT Subtitles (also for EXMARaLDA) (*.vtt)"
+        )
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            None, "Save file", self.path, filter_string, "noScribe Transcript (*.html)"
+        )
+        if path == "": # canceled
             return
         try:
             self._file_save(path)
