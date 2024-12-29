@@ -30,6 +30,7 @@ import subprocess
 from datetime import datetime
 from time import sleep
 import AdvancedHTMLParser
+import html
 from tempfile import TemporaryDirectory
 from search_and_replace_dialog import SearchAndReplaceDialog
 
@@ -74,7 +75,7 @@ def html_node_to_text(node: AdvancedHTMLParser.AdvancedTag) -> str:
     """
     # For text nodes, return their value directly
     if AdvancedHTMLParser.isTextNode(node): # node.nodeType == node.TEXT_NODE:
-        return node
+        return html.unescape(node)
     # For element nodes, recursively process their children
     elif AdvancedHTMLParser.isTagNode(node):
         text_parts = []
@@ -99,9 +100,7 @@ def html_to_text(parser: AdvancedHTMLParser.AdvancedHTMLParser) -> str:
 # Helper for WebVTT output
 
 def vtt_escape(txt: str) -> str:
-    txt = txt.replace('&', '&amp;')
-    txt = txt.replace('<', '&lt;')
-    txt = txt.replace('>', '&gt;')
+    txt = html.escape(txt)
     while txt.find('\n\n') > -1:
         txt = txt.replace('\n\n', '\n')
     return txt    
@@ -120,12 +119,14 @@ def ms_to_webvtt(milliseconds) -> str:
 def html_to_webvtt(parser: AdvancedHTMLParser.AdvancedHTMLParser, media_path: str):
     vtt = 'WEBVTT '
     paragraphs = parser.getElementsByTagName('p')
-    # The first paragraph contains the title
-    vtt += vtt_escape(paragraphs[0].textContent) + '\n\n'
-    # Next paragraph contains info about the transcript. Add as a note.
-    vtt += vtt_escape('NOTE\n' + html_node_to_text(paragraphs[1])) + '\n\n'
-    # Add media source:
-    vtt += f'NOTE media: {media_path}\n\n'
+    if len(paragraphs) > 2:
+        # The first paragraph contains the title
+        vtt += vtt_escape(paragraphs[0].textContent) + '\n\n'
+        # Next paragraph contains info about the transcript. Add as a note.
+        vtt += vtt_escape('NOTE\n' + html_node_to_text(paragraphs[1])) + '\n\n'
+    if media_path != '':
+        # Add media source:
+        vtt += f'NOTE media: {media_path}\n\n'
 
     #Add all segments as VTT cues
     segments = parser.getElementsByTagName('a')
@@ -549,6 +550,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.dialog_critical(str(e))
             
     def _load_audio(self):
+            if self.audio_source == '' or not os.path.exists(self.audio_source):
+                return
             # create tmp wav-file (allows for more precise seeking compared with many other formats)
             self.tmpdir = TemporaryDirectory('noScribe')
             self.tmp_audio_file = os.path.join(self.tmpdir.name, 'tmp_editaudio.wav')
