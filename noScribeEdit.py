@@ -237,7 +237,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.play_along_action = QtGui.QAction(qta.icon('mdi.volume-high', color=highlight_color), "Play/Pause Audio", self)      
         self.play_along_action.setCheckable(True)
         self.play_along_action.setStatusTip("Listen to the audio source of the current text")
-        self.play_along_action.setShortcut(QtGui.QKeySequence('Ctrl+Space'))
+        if platform.system() == 'Darwin': # = MAC
+            self.play_along_action.setShortcut(QtGui.QKeySequence('Meta+Space'))
+        else:
+            self.play_along_action.setShortcut(QtGui.QKeySequence('Ctrl+Space'))
         self.play_along_action.toggled.connect(self.play_along)
         # file_menu.addAction(open_file_action)
         noScribe_toolbar.addAction(self.play_along_action)
