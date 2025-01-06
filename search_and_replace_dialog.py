@@ -49,13 +49,9 @@ class SearchAndReplaceDialog(QtWidgets.QDialog):
 
         self.search_input.textChanged.connect(self.highlight_all)
     
-    #def close(self):
-    #    self.parent().remove_highlight_matches()
-    #    return super().close()
-        
-    def closeEvent(self, a0):
+    def reject(self):
         self.parent().remove_highlight_matches()
-        return super().closeEvent(a0)
+        return super().reject()
 
     def find_next(self):
         search_text = self.search_input.text()
