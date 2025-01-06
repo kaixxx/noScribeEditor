@@ -179,6 +179,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tmp_audio_file = None
         self.keep_playing = False # Stops the play_along-function when set to False 
         
+        # Restore stored window geometry
+        geom = get_config('window_geometry', None)
+        if geom:
+            self.restoreGeometry(QtCore.QByteArray.fromHex(geom.encode('utf-8')))
+        
         # GUI
         layout = QtWidgets.QVBoxLayout()
         
@@ -995,6 +1000,10 @@ class MainWindow(QtWidgets.QMainWindow):
         font = self.editor.font()
         size = font.pointSize()
         config['editor_zoom'] = str(size)
+        
+        # Save window geometry
+        config['window_geometry'] = self.saveGeometry().toHex().data().decode('utf-8')
+        
         with open(config_file, 'w') as file:
             yaml.safe_dump(config, file)
 
