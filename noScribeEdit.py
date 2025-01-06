@@ -66,6 +66,22 @@ def get_config(key: str, default):
         config[key] = default
     return config[key]
 
+# recent files
+
+def update_recent_files(filepath):
+    recent_files = config.get('recent_files', [])
+    
+    if filepath in recent_files:
+        recent_files.remove(filepath)
+    
+    recent_files.insert(0, filepath)  # Add to the top of the list
+    
+    # Keep only the five most recent files
+    recent_files = recent_files[:5]
+    config['recent_files'] = recent_files
+    
+# helper for encoding/decoding 
+
 def decode_timestamp(ts):
     # return start, finish
     # example: "ts_1234_4321"
@@ -232,6 +248,9 @@ class MainWindow(QtWidgets.QMainWindow):
         open_file_action.triggered.connect(self.file_open)
         file_menu.addAction(open_file_action)
         file_toolbar.addAction(open_file_action)
+        
+        self.recent_files_menu = file_menu.addMenu("Recent Files")
+        self.update_recent_files_menu()  # Populate the recent files submenu initially
 
         save_file_action = QtGui.QAction(qta.icon('mdi.content-save', color=icon_color), "Save", self)
         save_file_action.setStatusTip("Save current file")
@@ -442,8 +461,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.underline_action,
             # We don't need to disable signals for alignment, as they are paragraph-wide.
         ]     
-                
-        # Initialize.
+                        
+        # Initialize
         self.cursor_changed()
         self.update_title()
         self.setWindowIcon(QtGui.QIcon(os.path.join(app_dir, 'noScribeEditLogo.png')))
@@ -490,7 +509,44 @@ class MainWindow(QtWidgets.QMainWindow):
         self.alignj_action.setChecked(self.editor.alignment() == QtCore.Qt.AlignJustify)
         
         self.block_signals(self._format_actions, False)
+        
+    def init_recent_files_menu(self):
+        self.recent_files_menu = self.menuBar().addMenu("Open Recent")
+        self.recent_file_actions = []  # Store actions to keep references
 
+        # Load recent files from config
+        recent_files = config.get('recent_files', [])
+
+        for filepath in recent_files:
+            if os.path.exists(filepath):  # Ensure the file still exists
+                action = QtGui.QAction(filepath, self)
+                action.triggered.connect(lambda checked, p=filepath: self._file_open(p))
+                self.recent_files_menu.addAction(action)
+                self.recent_file_actions.append(action)
+                
+    """    def update_recent_files_menu(self):
+            self.recent_files_menu.clear()
+            recent_files = config.get('recent_files', [])
+
+            for filepath in recent_files:
+                if os.path.exists(filepath):
+                    action = QtGui.QAction(filepath, self)
+                    action.triggered.connect(lambda checked, p=filepath: self._file_open(p))
+                    self.recent_files_menu.addAction(action)
+    """
+
+    def update_recent_files_menu(self):
+        self.recent_files_menu.clear()
+        recent_files = config.get('recent_files', [])
+
+        for filepath in recent_files:
+            if os.path.exists(filepath):
+                filename = os.path.basename(filepath)
+                action = QtGui.QAction(filename, self)
+                # Use lambda to pass full path to the handler
+                action.triggered.connect(lambda checked, p=filepath: self._file_open(p))
+                self.recent_files_menu.addAction(action)   
+                 
     def dialog(self, s):
         dlg = QtWidgets.QMessageBox(self)
         dlg.setIcon(QtWidgets.QMessageBox.Information)
@@ -513,7 +569,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     htmlStr = f.read()
                 
             self.path = path
-            
+            update_recent_files(path)
+            self.update_recent_files_menu()  # Refresh recent files menu            
+
             self.editor.clear()
             self.audio_source = None
             self.tmp_audio_file = None
