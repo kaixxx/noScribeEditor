@@ -32,6 +32,8 @@ from time import sleep
 import AdvancedHTMLParser
 import html
 from tempfile import TemporaryDirectory
+import appdirs
+import yaml
 from search_and_replace_dialog import SearchAndReplaceDialog
 
 app_dir = os.path.abspath(os.path.dirname(__file__))
@@ -42,6 +44,27 @@ default_font = "Arial"
 default_font_size = "12pt"
 
 # Helper functions
+
+# config
+config_dir = appdirs.user_config_dir('noScribe')
+if not os.path.exists(config_dir):
+    os.makedirs(config_dir)
+
+config_file = os.path.join(config_dir, 'editor_config.yaml')
+
+try:
+    with open(config_file, 'r') as file:
+        config = yaml.safe_load(file)
+        if not config:
+            raise # config file is empty (None)        
+except: # seems we run it for the first time and there is no config file
+    config = {}
+    
+def get_config(key: str, default):
+    """ Get a config value, set it if it doesn't exist """
+    if key not in config:
+        config[key] = default
+    return config[key]
 
 def decode_timestamp(ts):
     # return start, finish
@@ -157,7 +180,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.keep_playing = False # Stops the play_along-function when set to False 
         
         # GUI
-        
         layout = QtWidgets.QVBoxLayout()
         
         # Editor:        
@@ -170,7 +192,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.editor.cursorPositionChanged.connect(self.cursor_changed)
         self.editor.selectionChanged.connect(self.cursor_changed)
         self.editor.installEventFilter(EnterKeyFilter(self.editor))
-        font = QtGui.QFont(default_font, 11)
+        editor_zoom = get_config('editor_zoom', '11')
+        font = QtGui.QFont(default_font, int(editor_zoom))
         self.editor.setFont(font)
         layout.addWidget(self.editor)
         container = QtWidgets.QWidget()
@@ -312,7 +335,7 @@ class MainWindow(QtWidgets.QMainWindow):
         find_action = QtGui.QAction(qta.icon('mdi.magnify', color=icon_color), "Find and Replace", self)
         find_action.setStatusTip("Find (and replace) text")
         find_action.setToolTip("Find (and replace) text")
-        find_action.setShortcut(QtGui.QKeySequence.Find)
+        find_action.setShortcuts([QtGui.QKeySequence.Find, QtGui.QKeySequence.Replace])
         find_action.triggered.connect(self.open_find_replace_dialog)
         edit_toolbar.addAction(find_action)
         edit_menu.addAction(find_action)
@@ -493,9 +516,10 @@ class MainWindow(QtWidgets.QMainWindow):
             # avoid that all anchors become formatted as underlined and blue 
             doc = self.editor.document()
             doc.setDefaultStyleSheet("a {color: #000000; text-decoration: none; }")
-            # reset the font size/zoom:
-            font = QtGui.QFont(default_font, 11)
-            self.editor.setFont(font)
+            # reset the font:
+            font_size = self.editor.font().pointSize()
+            font = QtGui.QFont(default_font, font_size, QtGui.QFont.Weight.Normal, False)
+            self.editor.setCurrentFont(font)
             self.editor.setText("Loading... please wait.")
             QtWidgets.QApplication.processEvents() # update GUI
             
@@ -967,6 +991,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.media_player.kill()
             self.media_player = None
         
+        # Save current zoom level
+        font = self.editor.font()
+        size = font.pointSize()
+        config['editor_zoom'] = str(size)
+        with open(config_file, 'w') as file:
+            yaml.safe_dump(config, file)
+
         event.accept()
 
     def update_title(self):
@@ -1143,6 +1174,8 @@ class EnterKeyFilter(QtCore.QObject):
                 if ':' in previous_block_text:
                     # Find the speaker label in the previous block
                     speaker_label = previous_block_text.split(':')[0]
+                    if len(speaker_label) > 30: # too long, unlikely to be a speaker name
+                        speaker_label = ''
                 
             # Go back to the original cursor position, insert line break and speaker
             cursor.setPosition(start_pos)
