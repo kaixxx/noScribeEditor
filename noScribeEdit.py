@@ -1180,7 +1180,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.find_next(text, case_sensitive, whole_word)
         QtWidgets.QApplication.processEvents()
         
-    def replace_in_anchor_hrefs(self, old: str, new: str) -> int:
+    def replace_in_anchor_hrefs(self, old: str, new: str, case_sensitive: bool) -> int:
         """
         Helper function that replaces `old` with `new` inside every <a> tag's href in a QTextEdit.
         Returns the number of hrefs changed.
@@ -1188,14 +1188,25 @@ class MainWindow(QtWidgets.QMainWindow):
 
         TS_HREF_RX = re.compile(r'^ts_(\d+)_(\d+)_(.+)$')
 
-        def _updated_href(href: str, old: str, new: str) -> str | None:
-            m = TS_HREF_RX.match(href or '')
+
+        def _updated_href(href: str, old: str, new: str, case_sensitive: bool) -> str | None:
+            m = TS_HREF_RX.match(href or "")
             if not m:
                 return None
             n1, n2, tail = m.groups()
-            if old not in tail:
-                return None
-            return f"ts_{n1}_{n2}_{tail.replace(old, new)}"
+
+            if case_sensitive:
+                # direct replacement
+                if old not in tail:
+                    return None
+                return f"ts_{n1}_{n2}_{tail.replace(old, new)}"
+            else:
+                # case-insensitive check & replace
+                # re.escape ensures we only match the literal string `old`
+                pattern = re.compile(re.escape(old), re.IGNORECASE)
+                if not pattern.search(tail):
+                    return None
+                return f"ts_{n1}_{n2}_{pattern.sub(new, tail)}"
 
         doc = self.editor.document()
         changes = []  # list of (start_pos, end_pos_exclusive, new_href)
@@ -1225,7 +1236,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     continue
 
                 href = fmt.anchorHref()
-                updated = _updated_href(href, old, new)
+                updated = _updated_href(href, old, new, case_sensitive)
                 if updated is None or updated == href:
                     i += 1
                     continue
@@ -1287,7 +1298,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # search & replace text also in html speaker markers
         spkr_text = text.strip().rstrip(':') # ignore whitespace and trailing colon in search and replace text
         spkr_replace_with = clean_vtt_voice(replace_with.strip().rstrip(':'))
-        self.replace_in_anchor_hrefs(spkr_text, spkr_replace_with)
+        self.replace_in_anchor_hrefs(spkr_text, spkr_replace_with, case_sensitive)
                 
     def reposition_dialog_if_necessary(self):
         if not self.search_replace_dialog.isVisible():
