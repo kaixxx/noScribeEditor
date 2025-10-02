@@ -1015,7 +1015,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         self.keep_playing = True                            
                     except:
                         self.keep_playing = False # stop playing along  
-                sleep(0.1)
+                sleep(0.01)
                 self.play_along_action.blockSignals(True) 
                 self.play_along_action.setChecked(self.keep_playing)
                 self.play_along_action.blockSignals(False)
