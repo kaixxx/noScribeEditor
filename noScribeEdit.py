@@ -209,9 +209,10 @@ def html_to_webvtt(parser: AdvancedHTMLParser.AdvancedHTMLParser, media_path: st
             if len(name_elems) > 1 and name_elems[0] == 'ts':
                 start = ms_to_webvtt(int(name_elems[1]))
                 end = ms_to_webvtt(int(name_elems[2]))
-                spkr = name_elems[3]
+                spkr = name_elems[3].strip('//')
                 txt = vtt_escape(html_node_to_text(segment))
-                vtt += f'{i+1}\n{start} --> {end}\n<v {spkr}>{txt.lstrip()}\n\n'
+                txt = txt.lstrip().strip('//').lstrip()
+                vtt += f'{i+1}\n{start} --> {end}\n<v {spkr}>{txt}\n\n'
     return vtt
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -793,7 +794,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
         with open(path, 'w', encoding="utf-8") as f:
             f.write(file_txt)
-        self.editor.document().setModified(False)
+            
+        if file_ext == 'html':
+            self.editor.document().setModified(False)
+            self.path = path
+            self.update_title()
+        else:
+            self.dialog(f'Copy saved as: "{path}"')
             
     def file_save(self):
         if self.path is None:
@@ -820,10 +827,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._file_save(path)
         except Exception as e:
             self.dialog_critical(str(e))
-        else:
-            self.path = path
-            self.update_title()
-            
+                    
     def open_audio_source(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Audio source of the transcript", self.audio_source, "All (*.*)")
         if not path: # dialog is cancelled
