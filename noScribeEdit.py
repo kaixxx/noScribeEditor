@@ -474,7 +474,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.resize(900, self.height())
         self.show()
         if len(sys.argv) > 1:
-            self._file_open(sys.argv[1])
+            QtCore.QTimer.singleShot(0, lambda: self._file_open(sys.argv[1])) # show the main window before loading the transcript
         
     def block_signals(self, objects, b):
         for o in objects:
