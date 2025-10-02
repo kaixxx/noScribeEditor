@@ -1176,7 +1176,6 @@ class MainWindow(QtWidgets.QMainWindow):
                         QtWidgets.QMessageBox.information(
                             self, "Find", "No more occurrences found."
                         )
-                        QtWidgets.QApplication.beep()
                         return
                 else:
                     return
@@ -1198,6 +1197,17 @@ class MainWindow(QtWidgets.QMainWindow):
             if cursor.hasSelection():
                 selected_text = cursor.selectedText()
                 if (case_sensitive and selected_text == text) or (not case_sensitive and selected_text.lower() == text.lower()):
+                    # If selection is inside an anchor, update that anchor's href speaker part as well
+                    try:
+                        cf = cursor.charFormat()
+                        href = cf.anchorHref()
+                    except Exception:
+                        href = ''
+                    if href and href.startswith('ts_'):
+                        spkr_text = text.strip().rstrip(':')
+                        spkr_replace_with = clean_vtt_voice(replace_with.strip().rstrip(':'))
+                        # Update only this anchor's href
+                        self.replace_in_anchor_hrefs(spkr_text, spkr_replace_with, case_sensitive, limit_href=href)
                     cursor.insertText(replace_with)
                     self.editor.setTextCursor(cursor)
             self.find_next(text, case_sensitive, whole_word)
@@ -1207,9 +1217,10 @@ class MainWindow(QtWidgets.QMainWindow):
             cursor.endEditBlock()
             QtWidgets.QApplication.processEvents()
         
-    def replace_in_anchor_hrefs(self, old: str, new: str, case_sensitive: bool) -> int:
+    def replace_in_anchor_hrefs(self, old: str, new: str, case_sensitive: bool, limit_href: str | None = None) -> int:
         """
-        Helper function that replaces `old` with `new` inside every <a> tag's href in a QTextEdit.
+        Helper function that replaces `old` with `new` inside <a> tag hrefs.
+        If `limit_href` is provided, only anchors with this exact href are updated.
         Returns the number of hrefs changed.
         """
         # Nothing to search for
@@ -1266,6 +1277,9 @@ class MainWindow(QtWidgets.QMainWindow):
                         continue
 
                     href = fmt.anchorHref()
+                    if limit_href is not None and href != limit_href:
+                        i += 1
+                        continue
                     updated = _updated_href(href, old, new, case_sensitive)
                     if updated is None or updated == href:
                         i += 1
