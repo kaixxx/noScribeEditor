@@ -790,7 +790,7 @@ class MainWindow(QtWidgets.QMainWindow):
             media_path = self.audio_source if self.audio_source is not None else ''
             file_txt = html_to_webvtt(d, media_path)
         else:
-            raise TypeError(f'Invalid file type "{self.file_ext}".')
+            raise TypeError(f'Invalid file type "{file_ext}".')
 
         with open(path, 'w', encoding="utf-8") as f:
             f.write(file_txt)
@@ -1099,38 +1099,48 @@ class MainWindow(QtWidgets.QMainWindow):
         self.search_replace_dialog.show()
         
     def highlight_matches(self, text, case_sensitive, whole_word):
-        selections = []  # List to hold the extra selections
+        # Validate input: empty text clears highlights, no error popups
+        if not isinstance(text, str) or text == "":
+            self.remove_highlight_matches()
+            return
 
-        # Define the highlight format
-        highlight_format = QtGui.QTextCharFormat()
-        highlight_format.setBackground(QtGui.QBrush(QtGui.QColor("#ffff00")))  # Yellow highlight
+        selections = []
 
-        # Set the appropriate search flags
-        flags = QtGui.QTextDocument.FindFlag(0)
-        if case_sensitive:
-            flags |= QtGui.QTextDocument.FindCaseSensitively
-        if whole_word:
-            flags |= QtGui.QTextDocument.FindWholeWords
+        try:
+            # Define the highlight format
+            highlight_format = QtGui.QTextCharFormat()
+            highlight_format.setBackground(QtGui.QBrush(QtGui.QColor("#ffff00")))  # Yellow highlight
 
-        # Start the search from the beginning of the document
-        cursor = self.editor.textCursor()
-        cursor.setPosition(0)
-        document = self.editor.document()
+            # Set the appropriate search flags
+            flags = QtGui.QTextDocument.FindFlag(0)
+            if case_sensitive:
+                flags |= QtGui.QTextDocument.FindCaseSensitively
+            if whole_word:
+                flags |= QtGui.QTextDocument.FindWholeWords
 
-        # Search for the text and collect selections to highlight
-        while not cursor.isNull() and not cursor.atEnd():
-            cursor = document.find(text, cursor, flags)
-            if cursor.isNull():
-                break  # Exit if no more matches found
+            # Start the search from the beginning of the document
+            cursor = self.editor.textCursor()
+            cursor.setPosition(0)
+            document = self.editor.document()
 
-            # Create an extra selection for each match
-            selection = QtWidgets.QTextEdit.ExtraSelection()
-            selection.format = highlight_format
-            selection.cursor = cursor
-            selections.append(selection)
+            # Search for the text and collect selections to highlight
+            while not cursor.isNull() and not cursor.atEnd():
+                cursor = document.find(text, cursor, flags)
+                if cursor.isNull():
+                    break  # Exit if no more matches found
 
-        # Apply all the selections to the editor
-        self.editor.setExtraSelections(selections)
+                # Create an extra selection for each match
+                selection = QtWidgets.QTextEdit.ExtraSelection()
+                selection.format = highlight_format
+                selection.cursor = cursor
+                selections.append(selection)
+
+            # Apply all the selections to the editor
+            self.editor.setExtraSelections(selections)
+        except Exception as e:
+            # Fail safe: remove stale highlights and notify
+            self.remove_highlight_matches()
+            # self.dialog_critical(f"Error while highlighting matches: {e}")
         
     def remove_highlight_matches(self):
         # Clear extra selections to remove highlights
@@ -1140,58 +1150,73 @@ class MainWindow(QtWidgets.QMainWindow):
         if text == '':
             self.dialog_critical('Search text is empty!')
             return
-        flags = QtGui.QTextDocument.FindFlag(0)
-        if case_sensitive:
-            flags |= QtGui.QTextDocument.FindCaseSensitively
-        if whole_word:
-            flags |= QtGui.QTextDocument.FindWholeWords
+        try:
+            flags = QtGui.QTextDocument.FindFlag(0)
+            if case_sensitive:
+                flags |= QtGui.QTextDocument.FindCaseSensitively
+            if whole_word:
+                flags |= QtGui.QTextDocument.FindWholeWords
 
-        document = self.editor.document()
-        cursor = self.editor.textCursor()
-        found_cursor = document.find(text, cursor, flags)
+            document = self.editor.document()
+            cursor = self.editor.textCursor()
+            found_cursor = document.find(text, cursor, flags)
 
-        if found_cursor.isNull():
-            # Ask if the user wants to continue searching from the top.
-            ret = QtWidgets.QMessageBox.question(
-                self, "Find", "Reached the end of the document. Continue from the beginning?",
-                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No
-            )
+            if found_cursor.isNull():
+                # Ask if the user wants to continue searching from the top.
+                ret = QtWidgets.QMessageBox.question(
+                    self, "Find", "Reached the end of the document. Continue from the beginning?",
+                    QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No
+                )
 
-            if ret == QtWidgets.QMessageBox.Yes:
-                # Search from the beginning
-                start_cursor = QtGui.QTextCursor(document)
-                found_cursor = document.find(text, start_cursor, flags)
-                if found_cursor.isNull():
-                    QtWidgets.QMessageBox.information(
-                        self, "Find", "No more occurrences found."
-                    )
+                if ret == QtWidgets.QMessageBox.Yes:
+                    # Search from the beginning
+                    start_cursor = QtGui.QTextCursor(document)
+                    found_cursor = document.find(text, start_cursor, flags)
+                    if found_cursor.isNull():
+                        QtWidgets.QMessageBox.information(
+                            self, "Find", "No more occurrences found."
+                        )
+                        QtWidgets.QApplication.beep()
+                        return
+                else:
                     return
-            else:
-                return
 
-        self.editor.setTextCursor(found_cursor)
-        self.editor.ensureCursorVisible()
-        # reposition the dialog if it overlaps the cursor
-        self.reposition_dialog_if_necessary()
+            self.editor.setTextCursor(found_cursor)
+            self.editor.ensureCursorVisible()
+            # reposition the dialog if it overlaps the cursor
+            self.reposition_dialog_if_necessary()
+        except Exception as e:
+            self.dialog_critical(f"Error during find: {e}")
             
     def replace(self, text, replace_with, case_sensitive, whole_word):
+        if text == '':
+            self.dialog_critical('Search text is empty!')
+            return
         cursor = self.editor.textCursor()
-        if cursor.hasSelection():
-            selected_text = cursor.selectedText()
-            if (case_sensitive and selected_text == text) or (not case_sensitive and selected_text.lower() == text.lower()):
-                cursor.insertText(replace_with)
-                self.editor.setTextCursor(cursor)
-        self.find_next(text, case_sensitive, whole_word)
-        QtWidgets.QApplication.processEvents()
+        cursor.beginEditBlock()
+        try:
+            if cursor.hasSelection():
+                selected_text = cursor.selectedText()
+                if (case_sensitive and selected_text == text) or (not case_sensitive and selected_text.lower() == text.lower()):
+                    cursor.insertText(replace_with)
+                    self.editor.setTextCursor(cursor)
+            self.find_next(text, case_sensitive, whole_word)
+        except Exception as e:
+            self.dialog_critical(f"Error during replace: {e}")
+        finally:
+            cursor.endEditBlock()
+            QtWidgets.QApplication.processEvents()
         
     def replace_in_anchor_hrefs(self, old: str, new: str, case_sensitive: bool) -> int:
         """
         Helper function that replaces `old` with `new` inside every <a> tag's href in a QTextEdit.
         Returns the number of hrefs changed.
         """
+        # Nothing to search for
+        if not old:
+            return 0
 
         TS_HREF_RX = re.compile(r'^ts_(\d+)_(\d+)_(.+)$')
-
 
         def _updated_href(href: str, old: str, new: str, case_sensitive: bool) -> str | None:
             m = TS_HREF_RX.match(href or "")
@@ -1212,139 +1237,170 @@ class MainWindow(QtWidgets.QMainWindow):
                     return None
                 return f"ts_{n1}_{n2}_{pattern.sub(new, tail)}"
 
-        doc = self.editor.document()
-        changes = []  # list of (start_pos, end_pos_exclusive, new_href)
- 
-        # Pass 1: collect contiguous anchor ranges to change
-        block = doc.begin()
-        while block.isValid():
-            # Materialize fragments of this block so we can index/peek ahead.
-            frags = []
-            it = block.begin()
-            while not it.atEnd():
-                frag = it.fragment()
-                if frag.isValid():
-                    frags.append((
-                        frag.position(),
-                        frag.length(),
-                        frag.charFormat()
-                    ))
-                it += 1
+        try:
+            doc = self.editor.document()
+            changes = []  # list of (start_pos, end_pos_exclusive, new_href)
 
-            i = 0
-            n = len(frags)
-            while i < n:
-                pos, length, fmt = frags[i]
-                if not fmt.isAnchor():
-                    i += 1
-                    continue
+            # Pass 1: collect contiguous anchor ranges to change
+            block = doc.begin()
+            while block.isValid():
+                # Materialize fragments of this block so we can index/peek ahead.
+                frags = []
+                it = block.begin()
+                while not it.atEnd():
+                    frag = it.fragment()
+                    if frag.isValid():
+                        frags.append((
+                            frag.position(),
+                            frag.length(),
+                            frag.charFormat()
+                        ))
+                    it += 1
 
-                href = fmt.anchorHref()
-                updated = _updated_href(href, old, new, case_sensitive)
-                if updated is None or updated == href:
-                    i += 1
-                    continue
+                i = 0
+                n = len(frags)
+                while i < n:
+                    pos, length, fmt = frags[i]
+                    if not fmt.isAnchor():
+                        i += 1
+                        continue
 
-                # Group contiguous fragments that share the same href
-                start = pos
-                end = pos + length
-                j = i + 1
-                while j < n:
-                    p2, l2, f2 = frags[j]
-                    if not f2.isAnchor() or f2.anchorHref() != href:
-                        break
-                    end = p2 + l2
-                    j += 1
+                    href = fmt.anchorHref()
+                    updated = _updated_href(href, old, new, case_sensitive)
+                    if updated is None or updated == href:
+                        i += 1
+                        continue
 
-                changes.append((start, end, updated))
-                i = j  # skip the grouped run
+                    # Group contiguous fragments that share the same href
+                    start = pos
+                    end = pos + length
+                    j = i + 1
+                    while j < n:
+                        p2, l2, f2 = frags[j]
+                        if not f2.isAnchor() or f2.anchorHref() != href:
+                            break
+                        end = p2 + l2
+                        j += 1
 
-            block = block.next()
+                    changes.append((start, end, updated))
+                    i = j  # skip the grouped run
 
-        if not changes:
+                block = block.next()
+
+            if not changes:
+                return 0
+
+            # Pass 2: apply from right to left (safer for positions)
+            changed_count = 0
+            edit_cursor = QtGui.QTextCursor(doc)
+            edit_cursor.beginEditBlock()
+            try:
+                for start, end, new_href in sorted(changes, key=lambda t: t[0], reverse=True):
+                    edit_cursor.setPosition(start)
+                    edit_cursor.setPosition(end, QtGui.QTextCursor.MoveMode.KeepAnchor)
+
+                    fmt: QtGui.QTextCharFormat = edit_cursor.charFormat()
+                    # If selection spans multiple formats, mergeCharFormat will apply to all.
+                    # Make sure it's an anchor and only update the href field.
+                    if not fmt.isAnchor():
+                        # Defensive: if mixed selection, force anchor flag on to preserve href
+                        fmt.setAnchor(True)
+                    fmt.setAnchorHref(new_href)
+                    edit_cursor.mergeCharFormat(fmt)
+                    changed_count += 1
+            finally:
+                edit_cursor.endEditBlock()
+
+            return changed_count
+        except Exception as e:
+            self.dialog_critical(f"Error updating speaker markers: {e}")
             return 0
-
-        # Pass 2: apply from right to left (safer for positions)
-        changed_count = 0
-        for start, end, new_href in sorted(changes, key=lambda t: t[0], reverse=True):
-            cursor = QtGui.QTextCursor(doc)
-            cursor.setPosition(start)
-            cursor.setPosition(end, QtGui.QTextCursor.MoveMode.KeepAnchor)
-
-            fmt: QtGui.QTextCharFormat = cursor.charFormat()
-            # If selection spans multiple formats, mergeCharFormat will apply to all.
-            # Make sure it's an anchor and only update the href field.
-            if not fmt.isAnchor():
-                # Defensive: if mixed selection, force anchor flag on to preserve href
-                fmt.setAnchor(True)
-            fmt.setAnchorHref(new_href)
-            cursor.mergeCharFormat(fmt)
-            changed_count += 1
-
-        return changed_count
 
     def replace_all(self, text: str, replace_with: str, case_sensitive: bool, whole_word: bool):
         if text == '':
             self.dialog_critical('Search text is empty!')
             return
-        flags = QtGui.QTextDocument.FindFlag(0)
-        if case_sensitive:
-            flags |= QtGui.QTextDocument.FindCaseSensitively
-        if whole_word:
-            flags |= QtGui.QTextDocument.FindWholeWords
+        try:
+            flags = QtGui.QTextDocument.FindFlag(0)
+            if case_sensitive:
+                flags |= QtGui.QTextDocument.FindCaseSensitively
+            if whole_word:
+                flags |= QtGui.QTextDocument.FindWholeWords
 
-        start_cursor = QtGui.QTextCursor(self.editor.document())
-        found_cursor = self.editor.document().find(text, start_cursor, flags)
-        while not found_cursor.isNull():            
-            found_cursor.insertText(replace_with)
-            found_cursor = self.editor.document().find(text, found_cursor, flags)
-            
-        # search & replace text also in html speaker markers
-        spkr_text = text.strip().rstrip(':') # ignore whitespace and trailing colon in search and replace text
-        spkr_replace_with = clean_vtt_voice(replace_with.strip().rstrip(':'))
-        self.replace_in_anchor_hrefs(spkr_text, spkr_replace_with, case_sensitive)
+            doc = self.editor.document()
+            tx_cursor = QtGui.QTextCursor(doc)
+            tx_cursor.beginEditBlock()
+
+            replacements = 0
+            try:
+                start_cursor = QtGui.QTextCursor(doc)
+                found_cursor = doc.find(text, start_cursor, flags)
+                while not found_cursor.isNull():
+                    found_cursor.insertText(replace_with)
+                    replacements += 1
+                    found_cursor = doc.find(text, found_cursor, flags)
+            finally:
+                tx_cursor.endEditBlock()
+
+            # search & replace text also in html speaker markers
+            spkr_text = text.strip().rstrip(':')  # ignore whitespace and trailing colon in search and replace text
+            spkr_replace_with = clean_vtt_voice(replace_with.strip().rstrip(':'))
+            anchor_replacements = self.replace_in_anchor_hrefs(spkr_text, spkr_replace_with, case_sensitive)
+
+            # Provide a gentle notice when nothing was replaced anywhere
+            if replacements == 0 and anchor_replacements == 0:
+                QtWidgets.QMessageBox.information(self, "Replace All", "No occurrences found to replace.")
+        except Exception as e:
+            self.dialog_critical(f"Error during replace all: {e}")
                 
     def reposition_dialog_if_necessary(self):
-        if not self.search_replace_dialog.isVisible():
+        # Dialog may not exist yet or could be closed
+        if not hasattr(self, 'search_replace_dialog') or self.search_replace_dialog is None:
             return
+        try:
+            if not self.search_replace_dialog.isVisible():
+                return
 
-        # Get the cursor rectangle and map it to global coordinates
-        cursor_rect = self.editor.cursorRect()
-        cursor_global_top_left = self.editor.mapToGlobal(cursor_rect.topLeft())
-        cursor_global_bottom_right = self.editor.mapToGlobal(cursor_rect.bottomRight())
-        cursor_global_rect = QtCore.QRect(cursor_global_top_left, cursor_global_bottom_right)
+            # Get the cursor rectangle and map it to global coordinates
+            cursor_rect = self.editor.cursorRect()
+            cursor_global_top_left = self.editor.mapToGlobal(cursor_rect.topLeft())
+            cursor_global_bottom_right = self.editor.mapToGlobal(cursor_rect.bottomRight())
+            cursor_global_rect = QtCore.QRect(cursor_global_top_left, cursor_global_bottom_right)
 
-        # Get the dialog and screen geometry
-        dialog_rect = self.search_replace_dialog.geometry()
+            # Get the dialog and screen geometry
+            dialog_rect = self.search_replace_dialog.geometry()
 
-        screen_geometry = QtWidgets.QApplication.instance().primaryScreen().geometry()
+            screen_geometry = QtWidgets.QApplication.instance().primaryScreen().geometry()
 
-        # Check if the dialog overlaps the cursor
-        if dialog_rect.intersects(cursor_global_rect):
-            # Calculate new position to move the dialog out of the way
-            new_x = dialog_rect.x()
-            new_y = dialog_rect.y()
+            # Check if the dialog overlaps the cursor
+            if dialog_rect.intersects(cursor_global_rect):
+                # Calculate new position to move the dialog out of the way
+                new_x = dialog_rect.x()
+                new_y = dialog_rect.y()
 
-            # Move the dialog horizontally or vertically depending on space
-            if cursor_global_rect.right() + dialog_rect.width() < screen_geometry.width():
-                # Move dialog to the right of the text cursor
-                new_x = cursor_global_rect.right() + 10
-            elif cursor_global_rect.left() - dialog_rect.width() > 0:
-                # Move dialog to the left of the text cursor
-                new_x = cursor_global_rect.left() - dialog_rect.width() - 10
+                # Move the dialog horizontally or vertically depending on space
+                if cursor_global_rect.right() + dialog_rect.width() < screen_geometry.width():
+                    # Move dialog to the right of the text cursor
+                    new_x = cursor_global_rect.right() + 10
+                elif cursor_global_rect.left() - dialog_rect.width() > 0:
+                    # Move dialog to the left of the text cursor
+                    new_x = cursor_global_rect.left() - dialog_rect.width() - 10
 
-            if cursor_global_rect.bottom() + dialog_rect.height() < screen_geometry.height():
-                # Move dialog below the text cursor
-                new_y = cursor_global_rect.bottom() + 10
-            elif cursor_global_rect.top() - dialog_rect.height() > 0:
-                # Move dialog above the text cursor
-                new_y = cursor_global_rect.top() - dialog_rect.height() - 10
+                if cursor_global_rect.bottom() + dialog_rect.height() < screen_geometry.height():
+                    # Move dialog below the text cursor
+                    new_y = cursor_global_rect.bottom() + 10
+                elif cursor_global_rect.top() - dialog_rect.height() > 0:
+                    # Move dialog above the text cursor
+                    new_y = cursor_global_rect.top() - dialog_rect.height() - 10
 
-            # Ensure the dialog remains within screen bounds
-            new_x = max(min(new_x, screen_geometry.width() - dialog_rect.width()), 0)
-            new_y = max(min(new_y, screen_geometry.height() - dialog_rect.height()), 0)
+                # Ensure the dialog remains within screen bounds
+                new_x = max(min(new_x, screen_geometry.width() - dialog_rect.width()), 0)
+                new_y = max(min(new_y, screen_geometry.height() - dialog_rect.height()), 0)
 
-            self.search_replace_dialog.move(new_x, new_y)
+                self.search_replace_dialog.move(new_x, new_y)
+        except Exception:
+            # Non-fatal: if repositioning fails, ignore
+            pass
             
 class EnterKeyFilter(QtCore.QObject):
     def __init__(self, editor):
