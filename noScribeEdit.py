@@ -1,6 +1,6 @@
 # noScribeEdit 
 # Part of noScribe, the AI-powered Audio Transcription
-# Copyright (C) 2023 Kai Dröge
+# Copyright (C) 2025 Kai Dröge
 # ported to MAC by Philipp Schneider (gernophil)
 # Based on Megasolid Idiom - https://www.pythonguis.com/examples/python-rich-text-editor/
 
@@ -35,6 +35,8 @@ from tempfile import TemporaryDirectory
 import appdirs
 import yaml
 from search_and_replace_dialog import SearchAndReplaceDialog
+import re
+import unicodedata
 
 app_dir = os.path.abspath(os.path.dirname(__file__))
 
@@ -137,6 +139,35 @@ def html_to_text(parser: AdvancedHTMLParser.AdvancedHTMLParser) -> str:
     return html_node_to_text(parser.body)
 
 # Helper for WebVTT output
+
+def clean_vtt_voice(value: str) -> str:
+    """
+    Clean up a string so it can safely be used inside a 'v' field in WebVTT.
+    
+    Rules applied:
+    - Normalize Unicode characters (NFKD).
+    - Remove diacritics (accents).
+    - Replace spaces with underscores.
+    - Strip leading/trailing whitespace.
+    - Remove or replace invalid characters (keep only letters, digits, underscore, hyphen).
+    - Ensure it doesn’t start with a digit (prefix with 'v_' if so).
+    - Preserve case (do NOT force lowercase).
+    """
+    # Normalize and strip accents
+    normalized = unicodedata.normalize("NFKD", value)
+    without_accents = "".join([c for c in normalized if not unicodedata.combining(c)])
+    
+    # Replace spaces with underscores
+    cleaned = without_accents.strip().replace(" ", "_")
+    
+    # Remove invalid characters (only letters, digits, _, -)
+    cleaned = re.sub(r"[^A-Za-z0-9_-]", "", cleaned)
+    
+    # Ensure it doesn't start with a digit
+    if cleaned and cleaned[0].isdigit():
+        cleaned = "v_" + cleaned
+    
+    return cleaned
 
 def vtt_escape(txt: str) -> str:
     txt = html.escape(txt)
@@ -524,17 +555,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.recent_files_menu.addAction(action)
                 self.recent_file_actions.append(action)
                 
-    """    def update_recent_files_menu(self):
-            self.recent_files_menu.clear()
-            recent_files = config.get('recent_files', [])
-
-            for filepath in recent_files:
-                if os.path.exists(filepath):
-                    action = QtGui.QAction(filepath, self)
-                    action.triggered.connect(lambda checked, p=filepath: self._file_open(p))
-                    self.recent_files_menu.addAction(action)
-    """
-
     def update_recent_files_menu(self):
         self.recent_files_menu.clear()
         recent_files = config.get('recent_files', [])
@@ -1159,8 +1179,96 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.editor.setTextCursor(cursor)
         self.find_next(text, case_sensitive, whole_word)
         QtWidgets.QApplication.processEvents()
+        
+    def replace_in_anchor_hrefs(self, old: str, new: str) -> int:
+        """
+        Helper function that replaces `old` with `new` inside every <a> tag's href in a QTextEdit.
+        Returns the number of hrefs changed.
+        """
 
-    def replace_all(self, text, replace_with, case_sensitive, whole_word):
+        TS_HREF_RX = re.compile(r'^ts_(\d+)_(\d+)_(.+)$')
+
+        def _updated_href(href: str, old: str, new: str) -> str | None:
+            m = TS_HREF_RX.match(href or '')
+            if not m:
+                return None
+            n1, n2, tail = m.groups()
+            if old not in tail:
+                return None
+            return f"ts_{n1}_{n2}_{tail.replace(old, new)}"
+
+        doc = self.editor.document()
+        changes = []  # list of (start_pos, end_pos_exclusive, new_href)
+ 
+        # Pass 1: collect contiguous anchor ranges to change
+        block = doc.begin()
+        while block.isValid():
+            # Materialize fragments of this block so we can index/peek ahead.
+            frags = []
+            it = block.begin()
+            while not it.atEnd():
+                frag = it.fragment()
+                if frag.isValid():
+                    frags.append((
+                        frag.position(),
+                        frag.length(),
+                        frag.charFormat()
+                    ))
+                it += 1
+
+            i = 0
+            n = len(frags)
+            while i < n:
+                pos, length, fmt = frags[i]
+                if not fmt.isAnchor():
+                    i += 1
+                    continue
+
+                href = fmt.anchorHref()
+                updated = _updated_href(href, old, new)
+                if updated is None or updated == href:
+                    i += 1
+                    continue
+
+                # Group contiguous fragments that share the same href
+                start = pos
+                end = pos + length
+                j = i + 1
+                while j < n:
+                    p2, l2, f2 = frags[j]
+                    if not f2.isAnchor() or f2.anchorHref() != href:
+                        break
+                    end = p2 + l2
+                    j += 1
+
+                changes.append((start, end, updated))
+                i = j  # skip the grouped run
+
+            block = block.next()
+
+        if not changes:
+            return 0
+
+        # Pass 2: apply from right to left (safer for positions)
+        changed_count = 0
+        for start, end, new_href in sorted(changes, key=lambda t: t[0], reverse=True):
+            cursor = QtGui.QTextCursor(doc)
+            cursor.setPosition(start)
+            cursor.setPosition(end, QtGui.QTextCursor.MoveMode.KeepAnchor)
+
+            fmt: QtGui.QTextCharFormat = cursor.charFormat()
+            # If selection spans multiple formats, mergeCharFormat will apply to all.
+            # Make sure it's an anchor and only update the href field.
+            if not fmt.isAnchor():
+                # Defensive: if mixed selection, force anchor flag on to preserve href
+                fmt.setAnchor(True)
+            fmt.setAnchorHref(new_href)
+            cursor.mergeCharFormat(fmt)
+            changed_count += 1
+
+        return changed_count
+
+    def replace_all(self, text: str, replace_with: str, case_sensitive: bool, whole_word: bool):
         if text == '':
             self.dialog_critical('Search text is empty!')
             return
@@ -1175,6 +1283,11 @@ class MainWindow(QtWidgets.QMainWindow):
         while not found_cursor.isNull():            
             found_cursor.insertText(replace_with)
             found_cursor = self.editor.document().find(text, found_cursor, flags)
+            
+        # search & replace text also in html speaker markers
+        spkr_text = text.strip().rstrip(':') # ignore whitespace and trailing colon in search and replace text
+        spkr_replace_with = clean_vtt_voice(replace_with.strip().rstrip(':'))
+        self.replace_in_anchor_hrefs(spkr_text, spkr_replace_with)
                 
     def reposition_dialog_if_necessary(self):
         if not self.search_replace_dialog.isVisible():
