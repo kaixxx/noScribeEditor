@@ -1,0 +1,1 @@
+Source of macOS static builds for ffmpeg: https://evermeet.cx/ffmpeg/
