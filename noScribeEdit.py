@@ -561,12 +561,11 @@ class MainWindow(QtWidgets.QMainWindow):
         recent_files = config.get('recent_files', [])
 
         for filepath in recent_files:
-            if os.path.exists(filepath):
-                filename = os.path.basename(filepath)
-                action = QtGui.QAction(filename, self)
-                # Use lambda to pass full path to the handler
-                action.triggered.connect(lambda checked, p=filepath: self._file_open(p))
-                self.recent_files_menu.addAction(action)   
+            filename = os.path.basename(filepath)
+            action = QtGui.QAction(filename, self)
+            # Use lambda to pass full path to the handler
+            action.triggered.connect(lambda checked, p=filepath: self._file_open(p))
+            self.recent_files_menu.addAction(action)   
                  
     def dialog(self, s):
         dlg = QtWidgets.QMessageBox(self)
