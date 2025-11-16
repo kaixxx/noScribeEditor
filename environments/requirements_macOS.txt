@@ -1,0 +1,7 @@
+qtawesome
+pyqt6
+AdvancedHTMLParser
+pillow
+appdirs
+PyYAML
+pyinstaller
