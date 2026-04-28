@@ -175,6 +175,14 @@ def vtt_escape(txt: str) -> str:
         txt = txt.replace('\n\n', '\n')
     return txt    
 
+def clean_vtt_transcript_text(txt: str) -> str:
+    # remove markers for overlapping speech ("//")
+    txt = re.sub(r'^\s*//\s*', '', txt)
+    txt = re.sub(r'\s*//\s*$', '', txt)
+    # remove speaker labels ("S01:", "S02:", etc.) at the beginning of the text
+    txt = re.sub(r'(?m)^[ \t]*S\d{2}:[ \t]*', '', txt)
+    return txt.strip()
+
 def ms_to_webvtt(milliseconds) -> str:
     """converts milliseconds to the time stamp of WebVTT (HH:MM:SS.mmm)
     """
@@ -210,8 +218,8 @@ def html_to_webvtt(parser: AdvancedHTMLParser.AdvancedHTMLParser, media_path: st
                 start = ms_to_webvtt(int(name_elems[1]))
                 end = ms_to_webvtt(int(name_elems[2]))
                 spkr = name_elems[3].strip('//')
-                txt = vtt_escape(html_node_to_text(segment))
-                txt = txt.lstrip().strip('//').lstrip()
+                txt = clean_vtt_transcript_text(html_node_to_text(segment))
+                txt = vtt_escape(txt)
                 vtt += f'{i+1}\n{start} --> {end}\n<v {spkr}>{txt}\n\n'
     return vtt
 
