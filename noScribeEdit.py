@@ -1467,6 +1467,13 @@ if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
     app.setApplicationName("noScribeEdit")
     app.setStyle("Fusion")
+    app.setPalette(app.style().standardPalette())
+    app.setStyleSheet(
+        "QMenu { background-color: #ffffff; color: #000000; } "
+        "QMenu::item:selected { background-color: #e6e6e6; } "
+        "QMenu::item:disabled { color: #9a9a9a; } "
+        "QMenu::separator { height: 1px; background: #d0d0d0; margin: 4px 8px; }"
+    )
     window = MainWindow()
     
     app.exec_()
