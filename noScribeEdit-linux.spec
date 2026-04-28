@@ -1,27 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 
-block_cipher = None
-
-
 a = Analysis(
     ['noScribeEdit.py'],
     pathex=[],
-    binaries=[('ffmpeg_linux/ffmpeg','ffmpeg_linux'),
-        ('ffmpeg_linux/ffplay','ffmpeg_linux')],
+    binaries=[('ffmpeg_linux/ffmpeg', 'ffmpeg_linux/.'), ('ffmpeg_linux/ffplay', 'ffmpeg_linux/.')],
     datas=[('noScribeEditLogo.png', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
     noarchive=False,
+    optimize=0,
 )
-
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
@@ -39,12 +32,11 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='noScribeEditLogo.ico'
+    icon=['noScribeEditLogo.ico'],
 )
 coll = COLLECT(
     exe,
     a.binaries,
-    a.zipfiles,
     a.datas,
     strip=False,
     upx=True,
