@@ -234,6 +234,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tmpdir = None
         self.keep_playing = False # Stops the play_along-function when set to False 
         self.ignore_cursor_change = False
+        self.media_error_message = None
+        self.media_status = QMediaPlayer.MediaStatus.NoMedia
+        self.suppress_media_errors = False
         
         # Restore stored window geometry
         geom = get_config('window_geometry', None)
@@ -993,11 +996,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 raise Exception("No audio timestamps found in current selection.")
             speed = int(self.playback_speed.currentText()[:-1])
 
-            if self.media_player is None:
-                self.media_player = QMediaPlayer()
-                self.audio_output = QAudioOutput()
-                self.media_player.setAudioOutput(self.audio_output)
-                self.audio_output.setVolume(1.0)
+            self._ensure_media_player()
+            self._clear_media_error()
 
             source = QtCore.QUrl.fromLocalFile(self.tmp_audio_file)
             if self.media_player.source() != source or self.media_player.mediaStatus() == QMediaPlayer.MediaStatus.NoMedia:
@@ -1016,6 +1016,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._wait_for_playback_start()
                     
             while self.keep_playing:
+                self._check_media_error("Audio playback failed.")
                 if self.media_player.playbackState() == QMediaPlayer.PlaybackState.StoppedState:
                         break
 
@@ -1122,10 +1123,17 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.media_player is None:
             return
 
-        self.media_player.stop()
-        self.media_player.setSource(QtCore.QUrl())
-        QtWidgets.QApplication.processEvents()
-        QtCore.QThread.msleep(10)
+        old_suppress_state = self.suppress_media_errors
+        self.suppress_media_errors = True
+        try:
+            self.media_player.stop()
+            self._clear_media_error()
+            self.media_player.setSource(QtCore.QUrl())
+            QtWidgets.QApplication.processEvents()
+            QtCore.QThread.msleep(10)
+        finally:
+            self.suppress_media_errors = old_suppress_state
+            self._clear_media_error()
 
     def _wait_for_media_loaded(self, timeout_ms=5000):
         """Block briefly until the current media source is loaded or fails."""
@@ -1133,6 +1141,7 @@ class MainWindow(QtWidgets.QMainWindow):
         timer.start()
 
         while True:
+            self._check_media_error("Unable to load audio for playback.")
             status = self.media_player.mediaStatus()
             if status in (
                 QMediaPlayer.MediaStatus.LoadedMedia,
@@ -1155,6 +1164,7 @@ class MainWindow(QtWidgets.QMainWindow):
         timer.start()
 
         while self.keep_playing:
+            self._check_media_error("Unable to start audio playback.")
             state = self.media_player.playbackState()
             status = self.media_player.mediaStatus()
             if state == QMediaPlayer.PlaybackState.PlayingState:
@@ -1168,6 +1178,43 @@ class MainWindow(QtWidgets.QMainWindow):
 
             QtWidgets.QApplication.processEvents()
             QtCore.QThread.msleep(10)
+
+    def _ensure_media_player(self):
+        """Create the media player once and hook error/status signals."""
+        if self.media_player is not None:
+            return
+
+        self.media_player = QMediaPlayer()
+        self.audio_output = QAudioOutput()
+        self.media_player.setAudioOutput(self.audio_output)
+        self.audio_output.setVolume(1.0)
+        self.media_player.errorOccurred.connect(self._on_media_error)
+        self.media_player.mediaStatusChanged.connect(self._on_media_status_changed)
+
+    def _clear_media_error(self):
+        """Reset the last recorded media error message."""
+        self.media_error_message = None
+
+    def _check_media_error(self, fallback_message):
+        """Raise the last recorded media error immediately if one exists."""
+        if self.media_error_message:
+            raise RuntimeError(self.media_error_message)
+
+        if self.media_player is not None and self.media_player.error() != QMediaPlayer.Error.NoError:
+            raise RuntimeError(self.media_player.errorString() or fallback_message)
+
+    def _on_media_error(self, *args):
+        """Record asynchronous Qt multimedia errors for synchronous handling."""
+        if self.suppress_media_errors:
+            return
+
+        error_message = self.media_player.errorString() or "Qt multimedia reported an unknown audio playback error."
+        self.media_error_message = error_message
+        self.status.showMessage(f"Audio error: {error_message}", 5000)
+
+    def _on_media_status_changed(self, status):
+        """Track the last observed Qt media status for diagnostics."""
+        self.media_status = status
 
     def update_title(self):
         self.setWindowTitle("%s - noScribeEdit" % (os.path.basename(self.path) if self.path else "Untitled"))
