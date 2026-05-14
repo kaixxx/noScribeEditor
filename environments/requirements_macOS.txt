@@ -1,5 +1,5 @@
 qtawesome
-pyqt6
+pyqt6>=6.10
 AdvancedHTMLParser
 pillow
 appdirs

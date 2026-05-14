@@ -1004,6 +1004,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.media_player.setSource(source)
                 self._wait_for_media_loaded()
 
+            self._enable_pitch_compensation_if_available()
             self.media_player.setPlaybackRate(speed / 100.0)
             self.media_player.setPosition(start)
             self.keep_playing = True
@@ -1190,6 +1191,25 @@ class MainWindow(QtWidgets.QMainWindow):
         self.audio_output.setVolume(1.0)
         self.media_player.errorOccurred.connect(self._on_media_error)
         self.media_player.mediaStatusChanged.connect(self._on_media_status_changed)
+
+    def _enable_pitch_compensation_if_available(self):
+        """Enable pitch compensation on Qt 6.10+ when the active backend supports it."""
+        if self.media_player is None:
+            return
+
+        if not hasattr(self.media_player, "pitchCompensationAvailability"):
+            return
+        if not hasattr(self.media_player, "setPitchCompensation"):
+            return
+        if not hasattr(QMediaPlayer, "PitchCompensationAvailability"):
+            return
+
+        try:
+            availability = self.media_player.pitchCompensationAvailability()
+            if availability != QMediaPlayer.PitchCompensationAvailability.Unavailable:
+                self.media_player.setPitchCompensation(True)
+        except Exception:
+            pass
 
     def _clear_media_error(self):
         """Reset the last recorded media error message."""
