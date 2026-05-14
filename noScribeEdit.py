@@ -226,6 +226,7 @@ class MainWindow(QtWidgets.QMainWindow):
         super(MainWindow, self).__init__(*args, **kwargs)
         
         self.media_player = None
+        self.audio_output = None
         self.playback_speed = 100
         self.path = None # current file
         self.audio_source = None # corresponding audio file
@@ -890,6 +891,7 @@ class MainWindow(QtWidgets.QMainWindow):
         return True
 
     def _set_editor_cursor(self, cursor, ignore_during_playback=False):
+        """Set the editor cursor, optionally suppressing playback-stop side effects."""
         if ignore_during_playback:
             self.ignore_cursor_change = True
         try:
@@ -997,7 +999,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.media_player.setAudioOutput(self.audio_output)
                 self.audio_output.setVolume(1.0)
 
-            self.media_player.setSource(QtCore.QUrl.fromLocalFile(self.tmp_audio_file))
+            source = QtCore.QUrl.fromLocalFile(self.tmp_audio_file)
+            if self.media_player.source() != source or self.media_player.mediaStatus() == QMediaPlayer.MediaStatus.NoMedia:
+                self.media_player.setSource(source)
+                self._wait_for_media_loaded()
+
             self.media_player.setPlaybackRate(speed / 100.0)
             self.media_player.setPosition(start)
             self.keep_playing = True
@@ -1007,6 +1013,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.play_along_action.blockSignals(False)
 
             self.media_player.play()
+            self._wait_for_playback_start()
                     
             while self.keep_playing:
                 if self.media_player.playbackState() == QMediaPlayer.PlaybackState.StoppedState:
@@ -1079,6 +1086,7 @@ class MainWindow(QtWidgets.QMainWindow):
         event.accept()
 
     def _stop_playback(self):
+        """Stop active playback and sync the play-along action state."""
         self.keep_playing = False
         if self.media_player is not None:
             self.media_player.stop()
@@ -1088,10 +1096,66 @@ class MainWindow(QtWidgets.QMainWindow):
         self.play_along_action.blockSignals(False)
 
     def _cleanup_temp_audio(self):
-        self.tmp_audio_file = None
+        """Remove the temporary audio file after Qt has released any file handles."""
         if self.tmpdir is not None:
-            self.tmpdir.cleanup()
-            self.tmpdir = None
+            last_error = None
+            for _ in range(10):
+                try:
+                    self.tmpdir.cleanup()
+                    self.tmpdir = None
+                    self.tmp_audio_file = None
+                    return
+                except PermissionError as e:
+                    last_error = e
+                    QtWidgets.QApplication.processEvents()
+                    QtCore.QThread.msleep(50)
+
+            if last_error is not None:
+                raise last_error
+
+        self.tmp_audio_file = None
+
+    def _wait_for_media_loaded(self, timeout_ms=5000):
+        """Block briefly until the current media source is loaded or fails."""
+        timer = QtCore.QElapsedTimer()
+        timer.start()
+
+        while True:
+            status = self.media_player.mediaStatus()
+            if status in (
+                QMediaPlayer.MediaStatus.LoadedMedia,
+                QMediaPlayer.MediaStatus.BufferedMedia,
+                QMediaPlayer.MediaStatus.BufferingMedia,
+                QMediaPlayer.MediaStatus.EndOfMedia,
+            ):
+                return
+            if status == QMediaPlayer.MediaStatus.InvalidMedia:
+                raise RuntimeError(self.media_player.errorString() or "Unable to load audio for playback.")
+            if timer.elapsed() >= timeout_ms:
+                raise RuntimeError("Timed out while loading audio for playback.")
+
+            QtWidgets.QApplication.processEvents()
+            QtCore.QThread.msleep(10)
+
+    def _wait_for_playback_start(self, timeout_ms=2000):
+        """Block briefly until playback starts, ends immediately, or fails."""
+        timer = QtCore.QElapsedTimer()
+        timer.start()
+
+        while self.keep_playing:
+            state = self.media_player.playbackState()
+            status = self.media_player.mediaStatus()
+            if state == QMediaPlayer.PlaybackState.PlayingState:
+                return
+            if status == QMediaPlayer.MediaStatus.InvalidMedia:
+                raise RuntimeError(self.media_player.errorString() or "Unable to start audio playback.")
+            if status == QMediaPlayer.MediaStatus.EndOfMedia:
+                return
+            if timer.elapsed() >= timeout_ms:
+                raise RuntimeError("Timed out while starting audio playback.")
+
+            QtWidgets.QApplication.processEvents()
+            QtCore.QThread.msleep(10)
 
     def update_title(self):
         self.setWindowTitle("%s - noScribeEdit" % (os.path.basename(self.path) if self.path else "Untitled"))
