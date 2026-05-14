@@ -7,10 +7,8 @@ block_cipher = None
 a = Analysis(
     ['noScribeEdit.py'],
     pathex=[],
-    binaries=[('./ffmpeg_win/ffmpeg.exe','ffmpeg_win'),
-        ('./ffmpeg_win/ffplay.exe','ffmpeg_win')],
     datas=[('noScribeEditLogo.png', '.')],
-    hiddenimports=[],
+    hiddenimports=['av', 'PyQt6.QtMultimedia'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

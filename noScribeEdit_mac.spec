@@ -4,9 +4,8 @@
 a = Analysis(
     ['noScribeEdit.py'],
     pathex=[],
-    binaries=[('ffmpeg_mac/ffmpeg', 'ffmpeg_mac/.'), ('ffmpeg_mac/ffplay', 'ffmpeg_mac/.')],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=['av', 'PyQt6.QtMultimedia'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

@@ -5,3 +5,4 @@ pillow
 appdirs
 PyYAML
 pyinstaller
+av>=11,<13
