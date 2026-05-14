@@ -1097,6 +1097,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _cleanup_temp_audio(self):
         """Remove the temporary audio file after Qt has released any file handles."""
+        self._release_media_source()
+
         if self.tmpdir is not None:
             last_error = None
             for _ in range(10):
@@ -1114,6 +1116,16 @@ class MainWindow(QtWidgets.QMainWindow):
                 raise last_error
 
         self.tmp_audio_file = None
+
+    def _release_media_source(self):
+        """Detach the current media source so the temp audio file can be deleted."""
+        if self.media_player is None:
+            return
+
+        self.media_player.stop()
+        self.media_player.setSource(QtCore.QUrl())
+        QtWidgets.QApplication.processEvents()
+        QtCore.QThread.msleep(10)
 
     def _wait_for_media_loaded(self, timeout_ms=5000):
         """Block briefly until the current media source is loaded or fails."""
