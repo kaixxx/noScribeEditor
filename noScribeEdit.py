@@ -22,6 +22,7 @@ import platform
 import sys
 import AdvancedHTMLParser
 import html
+from collections import deque
 from tempfile import TemporaryDirectory
 import appdirs
 import av
@@ -232,6 +233,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.audio_source = None # corresponding audio file
         self.tmp_audio_file = None
         self.tmpdir = None
+        self.audio_decode_error_count = 0
         self.keep_playing = False # Stops the play_along-function when set to False 
         self.ignore_cursor_change = False
         self.media_error_message = None
@@ -666,55 +668,86 @@ class MainWindow(QtWidgets.QMainWindow):
                 
                 self.update_title()
                 self.status.clearMessage()
+                self._show_audio_decode_status()
                     
         except Exception as e:
             self.status.clearMessage()
             self.dialog_critical(str(e))
             
     def _load_audio(self):
-            if self.audio_source == '' or not os.path.exists(self.audio_source):
-                return False
-            try:
-                self._stop_playback()
-                self._cleanup_temp_audio()
-                # create tmp wav-file (allows for more precise seeking compared with many other formats)
-                self.tmpdir = TemporaryDirectory(prefix='noScribe-')
-                self.tmp_audio_file = os.path.join(self.tmpdir.name, 'tmp_editaudio.wav')
+        if self.audio_source == '' or not os.path.exists(self.audio_source):
+            self.audio_decode_error_count = 0
+            return False
+        try:
+            self._stop_playback()
+            self._cleanup_temp_audio()
+            self.audio_decode_error_count = 0
+            # create tmp wav-file (allows for more precise seeking compared with many other formats)
+            self.tmpdir = TemporaryDirectory(prefix='noScribe-')
+            self.tmp_audio_file = os.path.join(self.tmpdir.name, 'tmp_editaudio.wav')
 
-                with av.open(self.audio_source) as in_container:
-                    if not in_container.streams.audio:
-                        raise RuntimeError('No audio stream found')
+            with av.open(self.audio_source) as in_container:
+                if not in_container.streams.audio:
+                    raise RuntimeError('No audio stream found')
 
-                    in_stream = in_container.streams.audio[0]
-                    resampler = av.audio.resampler.AudioResampler(
-                        format='s16',
-                        layout='mono',
-                        rate=16000,
-                    )
+                in_stream = in_container.streams.audio[0]
+                packet_iterator = in_container.demux(in_stream)
+                pending_frames = deque()
+                resampler = av.audio.resampler.AudioResampler(
+                    format='s16',
+                    layout='mono',
+                    rate=16000,
+                )
 
-                    with av.open(self.tmp_audio_file, mode='w') as out_container:
-                        out_stream = out_container.add_stream('pcm_s16le', rate=16000)
-                        out_stream.layout = 'mono'
+                with av.open(self.tmp_audio_file, mode='w') as out_container:
+                    out_stream = out_container.add_stream('pcm_s16le', rate=16000)
+                    out_stream.layout = 'mono'
 
-                        for frame in in_container.decode(in_stream):
-                            resampled_frames = resampler.resample(frame)
-                            if not isinstance(resampled_frames, list):
-                                resampled_frames = [resampled_frames]
+                    while True:
+                        while not pending_frames:
+                            try:
+                                packet = next(packet_iterator)
+                            except StopIteration:
+                                break
 
-                            for resampled_frame in resampled_frames:
-                                if resampled_frame is None:
-                                    continue
-                                for packet in out_stream.encode(resampled_frame):
-                                    out_container.mux(packet)
+                            try:
+                                pending_frames.extend(packet.decode())
+                            except av.error.InvalidDataError:
+                                self.audio_decode_error_count += 1
 
-                        for packet in out_stream.encode():
-                            out_container.mux(packet)
+                        if not pending_frames:
+                            break
 
-                return True
-            except Exception as e:
-                self._cleanup_temp_audio()
-                self.dialog_critical(f'Error creating temporary audio file.\n{e}')
-                return False
+                        frame = pending_frames.popleft()
+                        resampled_frames = resampler.resample(frame)
+                        if not isinstance(resampled_frames, list):
+                            resampled_frames = [resampled_frames]
+
+                        for resampled_frame in resampled_frames:
+                            if resampled_frame is None:
+                                continue
+                            for packet in out_stream.encode(resampled_frame):
+                                out_container.mux(packet)
+
+                    for packet in out_stream.encode():
+                        out_container.mux(packet)
+
+            return True
+        except Exception as e:
+            self.audio_decode_error_count = 0
+            self._cleanup_temp_audio()
+            self.dialog_critical(f'Error creating temporary audio file.\n{e}')
+            return False
+
+    def _show_audio_decode_status(self):
+        if self.audio_decode_error_count <= 0:
+            return
+
+        packet_label = 'packet' if self.audio_decode_error_count == 1 else 'packets'
+        self.status.showMessage(
+            f'Loaded audio and skipped {self.audio_decode_error_count} invalid audio {packet_label}.',
+            7000,
+        )
 
     def file_open(self):
         if self.editor.document().isModified():
@@ -850,6 +883,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.audio_source = path
             ret = self._load_audio()                 
             self.status.clearMessage()
+            self._show_audio_decode_status()
             self.editor.document().setModified(True)            
             return ret
 
