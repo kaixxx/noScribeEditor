@@ -42,6 +42,7 @@ icon_color = '#aaaaaa'
 highlight_color = '#ff8c00'
 default_font = "Arial"
 default_font_size = "12pt"
+audio_seek_interval_ms = 10_000
 
 # Helper functions
 
@@ -239,6 +240,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.media_error_message = None
         self.media_status = QMediaPlayer.MediaStatus.NoMedia
         self.suppress_media_errors = False
+        self.playback_segment_start = -1
+        self.playback_segment_stop = -1
+        self.playback_segment_selected = False
+        self.playback_paused = False
         
         # Restore stored window geometry
         geom = get_config('window_geometry', None)
@@ -336,6 +341,32 @@ class MainWindow(QtWidgets.QMainWindow):
         self.play_along_action.toggled.connect(self.play_along)
         # file_menu.addAction(open_file_action)
         noScribe_toolbar.addAction(self.play_along_action)
+
+        self.seek_backward_action = QtGui.QAction(qta.icon('mdi.skip-backward', color=highlight_color), "Jump Back 10 Seconds", self)
+        self.seek_backward_action.setStatusTip("Jump backward 10 seconds while playing audio")
+        self.seek_backward_action.setShortcut(QtGui.QKeySequence('Ctrl+Left'))
+        self.seek_backward_action.setShortcutContext(QtCore.Qt.ShortcutContext.ApplicationShortcut)
+        self.seek_backward_action.setEnabled(False)
+        self.seek_backward_action.triggered.connect(lambda: self.seek_audio(-audio_seek_interval_ms))
+        noScribe_toolbar.addAction(self.seek_backward_action)
+
+        self.seek_forward_action = QtGui.QAction(qta.icon('mdi.skip-forward', color=highlight_color), "Jump Forward 10 Seconds", self)
+        self.seek_forward_action.setStatusTip("Jump forward 10 seconds while playing audio")
+        self.seek_forward_action.setShortcut(QtGui.QKeySequence('Ctrl+Right'))
+        self.seek_forward_action.setShortcutContext(QtCore.Qt.ShortcutContext.ApplicationShortcut)
+        self.seek_forward_action.setEnabled(False)
+        self.seek_forward_action.triggered.connect(lambda: self.seek_audio(audio_seek_interval_ms))
+        noScribe_toolbar.addAction(self.seek_forward_action)
+
+        self.audio_seek_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+        self.audio_seek_slider.setRange(0, 0)
+        self.audio_seek_slider.setMinimumWidth(180)
+        self.audio_seek_slider.setMaximumWidth(300)
+        self.audio_seek_slider.setEnabled(False)
+        self.audio_seek_slider.setToolTip("Seek through the audio")
+        self.audio_seek_slider.setStatusTip("Seek through the audio and update the highlighted transcript segment")
+        self.audio_seek_slider.sliderMoved.connect(self.seek_audio_to)
+        noScribe_toolbar.addWidget(self.audio_seek_slider)
         
         self.playback_speed = QtWidgets.QComboBox()
         self.playback_speed.addItems(['60%', '80%', '100%', '120%', '135%', '150%', '180%', '200%'])
@@ -352,6 +383,8 @@ class MainWindow(QtWidgets.QMainWindow):
         edit_menu = self.menuBar().addMenu("&Edit")
 
         edit_menu.addAction(self.play_along_action)
+        edit_menu.addAction(self.seek_backward_action)
+        edit_menu.addAction(self.seek_forward_action)
         edit_menu.addSeparator()
 
         undo_action = QtGui.QAction(qta.icon('mdi.undo', color=icon_color), "Undo", self)
@@ -983,73 +1016,215 @@ class MainWindow(QtWidgets.QMainWindow):
                 return -1, -1
         else:
             return -1, -1    
-               
-    def play_along(self):
-        if self.keep_playing: # function already running, stop it
-            self._stop_playback()
-            return
-        
+
+    def select_segment_for_audio_position(self, audio_position):
+        # Select the segment that contains the audio position.
+        cr = self.editor.textCursor()
+        ts = cr.charFormat().anchorHref()
         try:
-            if not self.tmp_audio_file or not os.path.exists(self.tmp_audio_file): # audio source moved or missing
-                ret = QtWidgets.QMessageBox.warning(self, "noScribeEdit", 
-                                            "Audio source file not found.\n"
-                                            "Do you want to search for it?",
-                                            QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel, 
-                                            QtWidgets.QMessageBox.Ok)
-                if ret == QtWidgets.QMessageBox.Cancel:
-                    return
-                else:
-                    if not self.open_audio_source():
-                        return
-                        
-            cr = self.editor.textCursor()
-            cf = cr.charFormat()
-            ts = cf.anchorHref()
-                
+            current_start, current_stop = decode_timestamp(ts)
+        except:
+            current_start = -1
+            current_stop = -1
+
+        if current_start <= audio_position <= current_stop:
+            if self.select_current_segment():
+                return current_start, current_stop
+            return -1, -1
+
+        search_dir = "left" if current_start != -1 and audio_position < current_start else "right"
+        start, stop = self.find_segment(audio_position, search_dir)
+        if start == -1:
+            # The current cursor may be after the timestamped text, so retry from
+            # the beginning when seeking back into an earlier part of the audio.
+            cr.setPosition(0)
+            self._set_editor_cursor(cr, ignore_during_playback=True)
+            start, stop = self.find_segment(audio_position)
+        return start, stop
+
+    def find_next_segment_after_audio_position(self, audio_position):
+        # Finds the next timestamped segment without assuming the cursor is near it.
+        cr = self.editor.textCursor()
+        cr.clearSelection()
+        cr.setPosition(0)
+
+        while True:
             try:
-                start, stop = decode_timestamp(ts)
+                start, stop = decode_timestamp(cr.charFormat().anchorHref())
+                if start > audio_position:
+                    self._set_editor_cursor(cr, ignore_during_playback=True)
+                    if self.select_current_segment():
+                        return start, stop
             except:
-                ret = QtWidgets.QMessageBox.warning(self, "noScribeEdit", 
-                                    "No audio timestamp found for current selection.\n"
-                                    "Do you want to start from the beginning?",
-                                    QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel, 
-                                    QtWidgets.QMessageBox.Ok)
-                if ret == QtWidgets.QMessageBox.Cancel:
-                    return
-                else:
-                    # move to the beginning
-                    cr = self.editor.textCursor()
-                    cr.setPosition(0)
-                    self.editor.setTextCursor(cr)
-                    # search first segment
-                    start, stop = self.find_segment(None)
-                    if start == -1:
-                        raise Exception("No audio timestamps found in this document.")
+                pass
 
-            if not self.select_current_segment():
-                raise Exception("No audio timestamps found in current selection.")
-            speed = int(self.playback_speed.currentText()[:-1])
+            if not cr.movePosition(QtGui.QTextCursor.MoveOperation.Right, QtGui.QTextCursor.MoveMode.MoveAnchor, 1):
+                return -1, -1
 
-            self._ensure_media_player()
-            self._clear_media_error()
+    def _clear_current_segment(self):
+        cr = self.editor.textCursor()
+        cr.clearSelection()
+        self._set_editor_cursor(cr, ignore_during_playback=True)
 
-            source = QtCore.QUrl.fromLocalFile(self.tmp_audio_file)
-            if self.media_player.source() != source or self.media_player.mediaStatus() == QMediaPlayer.MediaStatus.NoMedia:
-                self.media_player.setSource(source)
-                self._wait_for_media_loaded()
+    def _schedule_next_segment(self, audio_position):
+        start, stop = self.find_next_segment_after_audio_position(audio_position)
+        self._clear_current_segment()
+        self.playback_segment_start = start
+        self.playback_segment_stop = stop
+        self.playback_segment_selected = False
 
-            self._enable_pitch_compensation_if_available()
-            self.media_player.setPlaybackRate(speed / 100.0)
-            self.media_player.setPosition(start)
-            self.keep_playing = True
+    def seek_audio(self, offset_ms):
+        if not self._audio_session_active() or self.media_player is None:
+            return
 
-            self.play_along_action.blockSignals(True) 
-            self.play_along_action.setChecked(True)
-            self.play_along_action.blockSignals(False)
+        new_position = max(0, self.media_player.position() + offset_ms)
+        self.seek_audio_to(new_position)
 
-            self.media_player.play()
-            self._wait_for_playback_start()
+    def seek_audio_to(self, new_position):
+        if not self._audio_session_active() or self.media_player is None:
+            return
+
+        duration = self.media_player.duration()
+        if duration > 0:
+            new_position = min(new_position, duration)
+
+        self.media_player.setPosition(new_position)
+        start, stop = self.select_segment_for_audio_position(new_position)
+        if start > -1:
+            self.playback_segment_start = start
+            self.playback_segment_stop = stop
+            self.playback_segment_selected = True
+        else:
+            self._schedule_next_segment(new_position)
+        self._set_audio_seek_position(new_position)
+        self.timestamp_status.setText('♪ ' + ms_to_str(new_position))
+
+    def _set_audio_seek_position(self, position):
+        self.audio_seek_slider.blockSignals(True)
+        try:
+            self.audio_seek_slider.setValue(position)
+        finally:
+            self.audio_seek_slider.blockSignals(False)
+
+    def _update_audio_seek_range(self, duration):
+        self.audio_seek_slider.setRange(0, max(0, duration))
+        self.audio_seek_slider.setEnabled(self._audio_session_active() and duration > 0)
+
+    def _audio_session_active(self):
+        return self.keep_playing or self.playback_paused
+
+    def _pause_playback(self):
+        self.keep_playing = False
+        self.playback_paused = True
+        if self.media_player is not None:
+            self.media_player.pause()
+
+        self.play_along_action.blockSignals(True)
+        self.play_along_action.setChecked(False)
+        self.play_along_action.blockSignals(False)
+
+    def play_along(self):
+        if self.keep_playing:
+            self._pause_playback()
+            return
+
+        if self.playback_paused:
+            try:
+                speed = int(self.playback_speed.currentText()[:-1])
+                self._clear_media_error()
+                self.playback_paused = False
+                self.keep_playing = True
+                self.media_player.setPlaybackRate(speed / 100.0)
+
+                self.play_along_action.blockSignals(True)
+                self.play_along_action.setChecked(True)
+                self.play_along_action.blockSignals(False)
+
+                self.media_player.play()
+                self._wait_for_playback_start()
+            except Exception as e:
+                self.dialog_critical(str(e))
+                self._stop_playback()
+                return
+        else:
+            try:
+                if not self.tmp_audio_file or not os.path.exists(self.tmp_audio_file): # audio source moved or missing
+                    ret = QtWidgets.QMessageBox.warning(self, "noScribeEdit",
+                                                "Audio source file not found.\n"
+                                                "Do you want to search for it?",
+                                                QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel,
+                                                QtWidgets.QMessageBox.Ok)
+                    if ret == QtWidgets.QMessageBox.Cancel:
+                        self._stop_playback()
+                        return
+                    else:
+                        if not self.open_audio_source():
+                            self._stop_playback()
+                            return
+
+                cr = self.editor.textCursor()
+                cf = cr.charFormat()
+                ts = cf.anchorHref()
                     
+                try:
+                    start, stop = decode_timestamp(ts)
+                except:
+                    ret = QtWidgets.QMessageBox.warning(self, "noScribeEdit",
+                                        "No audio timestamp found for current selection.\n"
+                                        "Do you want to start from the beginning?",
+                                        QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel,
+                                        QtWidgets.QMessageBox.Ok)
+                    if ret == QtWidgets.QMessageBox.Cancel:
+                        self._stop_playback()
+                        return
+                    else:
+                        # move to the beginning
+                        cr = self.editor.textCursor()
+                        cr.setPosition(0)
+                        self.editor.setTextCursor(cr)
+                        # search first segment
+                        start, stop = self.find_segment(None)
+                        if start == -1:
+                            raise Exception("No audio timestamps found in this document.")
+
+                if not self.select_current_segment():
+                    raise Exception("No audio timestamps found in current selection.")
+                speed = int(self.playback_speed.currentText()[:-1])
+
+                self._ensure_media_player()
+                self._clear_media_error()
+
+                source = QtCore.QUrl.fromLocalFile(self.tmp_audio_file)
+                if self.media_player.source() != source or self.media_player.mediaStatus() == QMediaPlayer.MediaStatus.NoMedia:
+                    self.media_player.setSource(source)
+                    self._wait_for_media_loaded()
+
+                self._enable_pitch_compensation_if_available()
+                self.media_player.setPlaybackRate(speed / 100.0)
+                self.media_player.setPosition(start)
+                self.playback_segment_start = start
+                self.playback_segment_stop = stop
+                self.playback_segment_selected = True
+                self.keep_playing = True
+
+                self.seek_backward_action.setEnabled(True)
+                self.seek_forward_action.setEnabled(True)
+                self._update_audio_seek_range(self.media_player.duration())
+                self._set_audio_seek_position(start)
+
+                self.play_along_action.blockSignals(True)
+                self.play_along_action.setChecked(True)
+                self.play_along_action.blockSignals(False)
+
+                self.media_player.play()
+                self._wait_for_playback_start()
+
+            except Exception as e:
+                self.dialog_critical(str(e))
+                self._stop_playback()
+                return
+
+        try:
             while self.keep_playing:
                 self._check_media_error("Audio playback failed.")
                 if self.media_player.playbackState() == QMediaPlayer.PlaybackState.StoppedState:
@@ -1062,35 +1237,47 @@ class MainWindow(QtWidgets.QMainWindow):
                     speed = new_speed
                     self.media_player.setPlaybackRate(speed / 100.0)
 
-                if curr_audio_pos > stop: # go to next segment in transcript
+                if self.playback_segment_selected and curr_audio_pos > self.playback_segment_stop:
                     try:
-                        new_start, new_stop = self.find_segment(curr_audio_pos)
-                        if new_start == -1:
-                            new_start, new_stop = self.find_segment(None, skip_current=True)
+                        new_start, new_stop = self.select_segment_for_audio_position(curr_audio_pos)
                         if new_start > -1: #found
-                            start = new_start
-                            stop = new_stop
+                            self.playback_segment_start = new_start
+                            self.playback_segment_stop = new_stop
+                            self.playback_segment_selected = True
                         else:
-                            # no segment found, deselect all
-                            cr = self.editor.textCursor()
-                            cr.clearSelection()
-                            self._set_editor_cursor(cr, ignore_during_playback=True)
-                            self.keep_playing = False
+                            self._schedule_next_segment(curr_audio_pos)
                     except:
-                        self.keep_playing = False # stop playing along  
+                        self.playback_segment_start = -1
+                        self.playback_segment_stop = -1
+                        self.playback_segment_selected = False
+                elif not self.playback_segment_selected and self.playback_segment_start > -1 and curr_audio_pos >= self.playback_segment_start:
+                    try:
+                        new_start, new_stop = self.select_segment_for_audio_position(curr_audio_pos)
+                        if new_start > -1:
+                            self.playback_segment_start = new_start
+                            self.playback_segment_stop = new_stop
+                            self.playback_segment_selected = True
+                        else:
+                            self._schedule_next_segment(curr_audio_pos)
+                    except:
+                        self.playback_segment_start = -1
+                        self.playback_segment_stop = -1
+                        self.playback_segment_selected = False
                 QtCore.QThread.msleep(10)
                 self.play_along_action.blockSignals(True) 
                 self.play_along_action.setChecked(self.keep_playing)
                 self.play_along_action.blockSignals(False)
                 self.timestamp_status.setText('♪ ' + ms_to_str(curr_audio_pos))
+                self._set_audio_seek_position(curr_audio_pos)
                 QtWidgets.QApplication.processEvents() # update GUI
         
         except Exception as e:
             self.dialog_critical(str(e))
         
         finally:
-            self._stop_playback()
-            self.cursor_changed()           
+            if not self.playback_paused:
+                self._stop_playback()
+                self.cursor_changed()
 
     def closeEvent(self, event):
         self._stop_playback()
@@ -1124,8 +1311,16 @@ class MainWindow(QtWidgets.QMainWindow):
     def _stop_playback(self):
         """Stop active playback and sync the play-along action state."""
         self.keep_playing = False
+        self.playback_segment_start = -1
+        self.playback_segment_stop = -1
+        self.playback_segment_selected = False
+        self.playback_paused = False
         if self.media_player is not None:
             self.media_player.stop()
+
+        self.seek_backward_action.setEnabled(False)
+        self.seek_forward_action.setEnabled(False)
+        self.audio_seek_slider.setEnabled(False)
 
         self.play_along_action.blockSignals(True)
         self.play_along_action.setChecked(False)
@@ -1225,6 +1420,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.audio_output.setVolume(1.0)
         self.media_player.errorOccurred.connect(self._on_media_error)
         self.media_player.mediaStatusChanged.connect(self._on_media_status_changed)
+        self.media_player.durationChanged.connect(self._update_audio_seek_range)
 
     def _enable_pitch_compensation_if_available(self):
         """Enable pitch compensation on Qt 6.10+ when the active backend supports it."""
