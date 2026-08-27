@@ -348,7 +348,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.seek_backward_action.setShortcutContext(QtCore.Qt.ShortcutContext.ApplicationShortcut)
         self.seek_backward_action.setEnabled(False)
         self.seek_backward_action.triggered.connect(lambda: self.seek_audio(-audio_seek_interval_ms))
-        noScribe_toolbar.addAction(self.seek_backward_action)
 
         self.seek_forward_action = QtGui.QAction(qta.icon('mdi.skip-forward', color=highlight_color), "Jump Forward 10 Seconds", self)
         self.seek_forward_action.setStatusTip("Jump forward 10 seconds while playing audio")
@@ -356,17 +355,27 @@ class MainWindow(QtWidgets.QMainWindow):
         self.seek_forward_action.setShortcutContext(QtCore.Qt.ShortcutContext.ApplicationShortcut)
         self.seek_forward_action.setEnabled(False)
         self.seek_forward_action.triggered.connect(lambda: self.seek_audio(audio_seek_interval_ms))
-        noScribe_toolbar.addAction(self.seek_forward_action)
+
+        audio_toolbar = QtWidgets.QToolBar("Audio Navigation")
+        audio_toolbar.setMovable(False)
+        audio_toolbar.setAllowedAreas(QtCore.Qt.ToolBarArea.BottomToolBarArea)
+        audio_toolbar.setIconSize(QtCore.QSize(24, 24))
+        audio_toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.addToolBar(QtCore.Qt.ToolBarArea.BottomToolBarArea, audio_toolbar)
+        audio_toolbar.addAction(self.seek_backward_action)
 
         self.audio_seek_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
         self.audio_seek_slider.setRange(0, 0)
-        self.audio_seek_slider.setMinimumWidth(180)
-        self.audio_seek_slider.setMaximumWidth(300)
+        self.audio_seek_slider.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
         self.audio_seek_slider.setEnabled(False)
         self.audio_seek_slider.setToolTip("Seek through the audio")
         self.audio_seek_slider.setStatusTip("Seek through the audio and update the highlighted transcript segment")
         self.audio_seek_slider.sliderMoved.connect(self.seek_audio_to)
-        noScribe_toolbar.addWidget(self.audio_seek_slider)
+        audio_toolbar.addWidget(self.audio_seek_slider)
+        audio_toolbar.addAction(self.seek_forward_action)
         
         self.playback_speed = QtWidgets.QComboBox()
         self.playback_speed.addItems(['60%', '80%', '100%', '120%', '135%', '150%', '180%', '200%'])
