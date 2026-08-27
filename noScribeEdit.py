@@ -244,6 +244,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.playback_segment_stop = -1
         self.playback_segment_selected = False
         self.playback_paused = False
+        self._audio_segment_bounds_cache = None
         
         # Restore stored window geometry
         geom = get_config('window_geometry', None)
@@ -260,6 +261,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.editor.setStyleSheet("QTextEdit {color: #000000; background-color: #ffffff; border: 0px;} QScrollBar::handle {background: " + default_background_color.name() + "}")
         self.editor.setAcceptRichText(True)
         self.editor.setAutoFormatting(QtWidgets.QTextEdit.AutoFormattingFlag.AutoNone)
+        self.editor.document().contentsChanged.connect(self._invalidate_audio_segment_bounds)
         self.editor.cursorPositionChanged.connect(self.cursor_changed)
         self.editor.selectionChanged.connect(self.cursor_changed)
         self.editor.installEventFilter(EnterKeyFilter(self.editor))
@@ -568,6 +570,34 @@ class MainWindow(QtWidgets.QMainWindow):
         for o in objects:
             o.blockSignals(b)
 
+    def _invalidate_audio_segment_bounds(self):
+        self._audio_segment_bounds_cache = None
+
+    def _audio_segment_text_bounds(self):
+        if self._audio_segment_bounds_cache is not None:
+            return self._audio_segment_bounds_cache
+
+        first_position = None
+        last_position = None
+        block = self.editor.document().begin()
+        while block.isValid():
+            iterator = block.begin()
+            while not iterator.atEnd():
+                fragment = iterator.fragment()
+                if fragment.isValid():
+                    try:
+                        decode_timestamp(fragment.charFormat().anchorHref())
+                        if first_position is None:
+                            first_position = fragment.position()
+                        last_position = fragment.position() + fragment.length()
+                    except:
+                        pass
+                iterator += 1
+            block = block.next()
+
+        self._audio_segment_bounds_cache = (first_position, last_position)
+        return self._audio_segment_bounds_cache
+
     def cursor_changed(self):
         if not self.keep_playing:
             # show current audio timestamp in status:
@@ -576,8 +606,15 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 start, stop = decode_timestamp(ts)
                 self.timestamp_status.setText('♪ ' + timestamp_to_string(start, stop))
+                self._set_audio_seek_position(start)
             except:
                 self.timestamp_status.setText('')
+                first_position, last_position = self._audio_segment_text_bounds()
+                if first_position is not None:
+                    if cr.position() < first_position:
+                        self._set_audio_seek_position(0)
+                    elif cr.position() >= last_position:
+                        self._set_audio_seek_position(self.audio_seek_slider.maximum())
         else:
             if not self.ignore_cursor_change:
                 self.keep_playing = False # stop playing if user moves the cursor
@@ -649,9 +686,10 @@ class MainWindow(QtWidgets.QMainWindow):
             update_recent_files(path)
             self.update_recent_files_menu()  # Refresh recent files menu            
 
+            self._stop_playback()
+            self._cleanup_temp_audio()
             self.editor.clear()
             self.audio_source = None
-            self.tmp_audio_file = None
             self.status.showMessage("Loading... please wait.")
             # avoid that all anchors become formatted as underlined and blue 
             doc = self.editor.document()
@@ -775,6 +813,12 @@ class MainWindow(QtWidgets.QMainWindow):
                     for packet in out_stream.encode():
                         out_container.mux(packet)
 
+            self._ensure_media_player()
+            self._clear_media_error()
+            self.media_player.setSource(QtCore.QUrl.fromLocalFile(self.tmp_audio_file))
+            self._wait_for_media_loaded()
+            self._update_audio_seek_range(self.media_player.duration())
+            self._set_audio_seek_position(0)
             return True
         except Exception as e:
             self.audio_decode_error_count = 0
@@ -1091,7 +1135,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.seek_audio_to(new_position)
 
     def seek_audio_to(self, new_position):
-        if not self._audio_session_active() or self.media_player is None:
+        if not self._audio_ready_for_seeking():
             return
 
         duration = self.media_player.duration()
@@ -1121,8 +1165,20 @@ class MainWindow(QtWidgets.QMainWindow):
             self.audio_seek_slider.blockSignals(False)
 
     def _update_audio_seek_range(self, duration):
-        self.audio_seek_slider.setRange(0, max(0, duration))
-        self.audio_seek_slider.setEnabled(self._audio_session_active() and duration > 0)
+        self.audio_seek_slider.blockSignals(True)
+        try:
+            self.audio_seek_slider.setRange(0, max(0, duration))
+        finally:
+            self.audio_seek_slider.blockSignals(False)
+        self.audio_seek_slider.setEnabled(self._audio_ready_for_seeking())
+
+    def _audio_ready_for_seeking(self):
+        return (
+            self.media_player is not None
+            and self.media_player.duration() > 0
+            and self.tmp_audio_file is not None
+            and os.path.exists(self.tmp_audio_file)
+        )
 
     def _audio_session_active(self):
         return self.keep_playing or self.playback_paused
@@ -1334,7 +1390,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.seek_backward_action.setEnabled(False)
         self.seek_forward_action.setEnabled(False)
-        self.audio_seek_slider.setEnabled(False)
+        self.audio_seek_slider.setEnabled(self._audio_ready_for_seeking())
 
         self.play_along_action.blockSignals(True)
         self.play_along_action.setChecked(False)
@@ -1343,6 +1399,12 @@ class MainWindow(QtWidgets.QMainWindow):
     def _cleanup_temp_audio(self):
         """Remove the temporary audio file after Qt has released any file handles."""
         self._release_media_source()
+        self.audio_seek_slider.blockSignals(True)
+        try:
+            self.audio_seek_slider.setRange(0, 0)
+        finally:
+            self.audio_seek_slider.blockSignals(False)
+        self.audio_seek_slider.setEnabled(False)
 
         if self.tmpdir is not None:
             last_error = None
