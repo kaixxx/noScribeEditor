@@ -366,6 +366,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.audio_seek_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
         self.audio_seek_slider.setRange(0, 0)
+        self.audio_seek_slider.setPageStep(audio_seek_interval_ms)
         self.audio_seek_slider.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Fixed,
@@ -373,7 +374,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.audio_seek_slider.setEnabled(False)
         self.audio_seek_slider.setToolTip("Seek through the audio")
         self.audio_seek_slider.setStatusTip("Seek through the audio and update the highlighted transcript segment")
-        self.audio_seek_slider.sliderMoved.connect(self.seek_audio_to)
+        self.audio_seek_slider.valueChanged.connect(self.seek_audio_to)
         audio_toolbar.addWidget(self.audio_seek_slider)
         audio_toolbar.addAction(self.seek_forward_action)
         
@@ -1109,6 +1110,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.timestamp_status.setText('♪ ' + ms_to_str(new_position))
 
     def _set_audio_seek_position(self, position):
+        # Do not let playback updates move the handle while the user is dragging it.
+        if self.audio_seek_slider.isSliderDown():
+            return
+
         self.audio_seek_slider.blockSignals(True)
         try:
             self.audio_seek_slider.setValue(position)
