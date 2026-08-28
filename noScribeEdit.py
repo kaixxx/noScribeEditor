@@ -42,7 +42,7 @@ icon_color = '#aaaaaa'
 highlight_color = '#ff8c00'
 default_font = "Arial"
 default_font_size = "12pt"
-audio_seek_interval_ms = 10_000
+audio_seek_interval_ms = 5_000
 
 # Helper functions
 
@@ -344,16 +344,16 @@ class MainWindow(QtWidgets.QMainWindow):
         # file_menu.addAction(open_file_action)
         noScribe_toolbar.addAction(self.play_along_action)
 
-        self.seek_backward_action = QtGui.QAction(qta.icon('mdi.skip-backward', color=highlight_color), "Jump Back 10 Seconds", self)
-        self.seek_backward_action.setStatusTip("Jump backward 10 seconds while playing audio")
-        self.seek_backward_action.setShortcut(QtGui.QKeySequence('Ctrl+Left'))
+        self.seek_backward_action = QtGui.QAction(qta.icon('mdi.rewind', color=highlight_color), "Jump Back 5 Seconds", self)
+        self.seek_backward_action.setStatusTip("Jump backward 5 seconds in the audio")
+        self.seek_backward_action.setShortcut(QtGui.QKeySequence('Alt+Left'))
         self.seek_backward_action.setShortcutContext(QtCore.Qt.ShortcutContext.ApplicationShortcut)
         self.seek_backward_action.setEnabled(False)
         self.seek_backward_action.triggered.connect(lambda: self.seek_audio(-audio_seek_interval_ms))
 
-        self.seek_forward_action = QtGui.QAction(qta.icon('mdi.skip-forward', color=highlight_color), "Jump Forward 10 Seconds", self)
-        self.seek_forward_action.setStatusTip("Jump forward 10 seconds while playing audio")
-        self.seek_forward_action.setShortcut(QtGui.QKeySequence('Ctrl+Right'))
+        self.seek_forward_action = QtGui.QAction(qta.icon('mdi.fast-forward', color=highlight_color), "Jump Forward 5 Seconds", self)
+        self.seek_forward_action.setStatusTip("Jump forward 5 seconds in the audio")
+        self.seek_forward_action.setShortcut(QtGui.QKeySequence('Alt+Right'))
         self.seek_forward_action.setShortcutContext(QtCore.Qt.ShortcutContext.ApplicationShortcut)
         self.seek_forward_action.setEnabled(False)
         self.seek_forward_action.triggered.connect(lambda: self.seek_audio(audio_seek_interval_ms))
@@ -1128,7 +1128,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.playback_segment_selected = False
 
     def seek_audio(self, offset_ms):
-        if not self._audio_session_active() or self.media_player is None:
+        if not self._audio_ready_for_seeking():
             return
 
         new_position = max(0, self.media_player.position() + offset_ms)
@@ -1170,7 +1170,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.audio_seek_slider.setRange(0, max(0, duration))
         finally:
             self.audio_seek_slider.blockSignals(False)
-        self.audio_seek_slider.setEnabled(self._audio_ready_for_seeking())
+        controls_enabled = self._audio_ready_for_seeking()
+        self.audio_seek_slider.setEnabled(controls_enabled)
+        self.seek_backward_action.setEnabled(controls_enabled)
+        self.seek_forward_action.setEnabled(controls_enabled)
 
     def _audio_ready_for_seeking(self):
         return (
@@ -1388,9 +1391,10 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.media_player is not None:
             self.media_player.stop()
 
-        self.seek_backward_action.setEnabled(False)
-        self.seek_forward_action.setEnabled(False)
-        self.audio_seek_slider.setEnabled(self._audio_ready_for_seeking())
+        controls_enabled = self._audio_ready_for_seeking()
+        self.seek_backward_action.setEnabled(controls_enabled)
+        self.seek_forward_action.setEnabled(controls_enabled)
+        self.audio_seek_slider.setEnabled(controls_enabled)
 
         self.play_along_action.blockSignals(True)
         self.play_along_action.setChecked(False)
@@ -1404,6 +1408,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.audio_seek_slider.setRange(0, 0)
         finally:
             self.audio_seek_slider.blockSignals(False)
+        self.seek_backward_action.setEnabled(False)
+        self.seek_forward_action.setEnabled(False)
         self.audio_seek_slider.setEnabled(False)
 
         if self.tmpdir is not None:
