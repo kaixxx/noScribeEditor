@@ -1425,18 +1425,43 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tmp_audio_file = None
 
     def _release_media_source(self):
-        """Detach the current media source so the temp audio file can be deleted."""
+        """Dispose the media backend so the temp audio file can be deleted safely."""
         if self.media_player is None:
             return
+
+        player = self.media_player
+        audio_output = self.audio_output
+        self.media_player = None
+        self.audio_output = None
 
         old_suppress_state = self.suppress_media_errors
         self.suppress_media_errors = True
         try:
-            self.media_player.stop()
+            # A paused FFmpeg backend must not be reused for the next transcript.
+            # Disconnect it first so teardown signals cannot affect a new player.
+            player.errorOccurred.disconnect(self._on_media_error)
+            player.mediaStatusChanged.disconnect(self._on_media_status_changed)
+            player.durationChanged.disconnect(self._update_audio_seek_range)
+
+            player.stop()
+            player.setSource(QtCore.QUrl())
+            player.setAudioOutput(None)
             self._clear_media_error()
-            self.media_player.setSource(QtCore.QUrl())
             QtWidgets.QApplication.processEvents()
-            QtCore.QThread.msleep(10)
+
+            player.deleteLater()
+            if audio_output is not None:
+                audio_output.deleteLater()
+            QtCore.QCoreApplication.sendPostedEvents(
+                player,
+                QtCore.QEvent.Type.DeferredDelete,
+            )
+            if audio_output is not None:
+                QtCore.QCoreApplication.sendPostedEvents(
+                    audio_output,
+                    QtCore.QEvent.Type.DeferredDelete,
+                )
+            QtWidgets.QApplication.processEvents()
         finally:
             self.suppress_media_errors = old_suppress_state
             self._clear_media_error()
@@ -1490,8 +1515,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.media_player is not None:
             return
 
-        self.media_player = QMediaPlayer()
-        self.audio_output = QAudioOutput()
+        self.media_player = QMediaPlayer(self)
+        self.audio_output = QAudioOutput(self)
         self.media_player.setAudioOutput(self.audio_output)
         self.audio_output.setVolume(1.0)
         self.media_player.errorOccurred.connect(self._on_media_error)
