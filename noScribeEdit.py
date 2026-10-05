@@ -704,7 +704,9 @@ class MainWindow(QtWidgets.QMainWindow):
             font = QtGui.QFont(default_font, font_size, QtGui.QFont.Weight.Normal, False)
             self.editor.setCurrentFont(font)
             self.editor.setText("Loading... please wait.")
-            QtWidgets.QApplication.processEvents() # update GUI
+            self.editor.viewport().repaint()
+            self.status.repaint()
+            QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
             
             # QTextEdit does not understand "font-size: 0.8em", only "small":
             htmlStr = htmlStr.replace('font-size: 0.8em', 'font-size: small')
@@ -772,6 +774,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.tmpdir = TemporaryDirectory(prefix='noScribe-')
             self.tmp_audio_file = os.path.join(self.tmpdir.name, 'tmp_editaudio.wav')
 
+            # Keep paint events flowing while decoding on the GUI thread. A single
+            # processEvents() before decoding may only schedule the window update.
+            self.status.repaint()
+            QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+            gui_update_timer = QtCore.QElapsedTimer()
+            gui_update_timer.start()
+
             with av.open(self.audio_source) as in_container:
                 if not in_container.streams.audio:
                     raise RuntimeError('No audio stream found')
@@ -790,6 +799,10 @@ class MainWindow(QtWidgets.QMainWindow):
                     out_stream.layout = 'mono'
 
                     while True:
+                        if gui_update_timer.elapsed() >= 50:
+                            QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+                            gui_update_timer.restart()
+
                         while not pending_frames:
                             try:
                                 packet = next(packet_iterator)

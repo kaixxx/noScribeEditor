@@ -10,3 +10,4 @@ ffplay_test.py
 tmp*.*
 
 .DS_Store
+AGENTS.md
