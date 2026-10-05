@@ -222,6 +222,69 @@ def html_to_webvtt(parser: AdvancedHTMLParser.AdvancedHTMLParser, media_path: st
                 vtt += f'{i+1}\n{start} --> {end}\n<v {spkr}>{txt}\n\n'
     return vtt
 
+class AudioSeekSlider(QtWidgets.QSlider):
+    """Show the transcript's time range without restricting audio navigation."""
+
+    def __init__(self):
+        super().__init__(QtCore.Qt.Orientation.Horizontal)
+        self.transcript_range = None
+        self.setToolTip("Seek through the audio")
+
+    def set_transcript_range(self, bounds):
+        self.transcript_range = bounds
+        tooltip = "Seek through the audio"
+        if bounds is not None:
+            tooltip += "\nTranscribed range: " + timestamp_to_string(*bounds)
+        self.setToolTip(tooltip)
+        self.update()
+
+    def paintEvent(self, event):
+        option = QtWidgets.QStyleOptionSlider()
+        self.initStyleOption(option)
+        style = self.style()
+        control = QtWidgets.QStyle.ComplexControl.CC_Slider
+        handle_control = QtWidgets.QStyle.SubControl.SC_SliderHandle
+        groove = style.subControlRect(
+            control, option, QtWidgets.QStyle.SubControl.SC_SliderGroove, self
+        )
+        handle = style.subControlRect(control, option, handle_control, self)
+        # Use the handle's actual travel so the marks align with seek positions.
+        left = handle.width() / 2
+        span = max(0, self.width() - handle.width())
+        center_y = groove.center().y()
+
+        def position(value):
+            value = max(self.minimum(), min(self.maximum(), value))
+            return left + QtWidgets.QStyle.sliderPositionFromValue(
+                self.minimum(), self.maximum(), value, span, option.upsideDown
+            )
+
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        track_color = self.palette().color(QtGui.QPalette.ColorRole.Mid)
+        painter.setPen(QtGui.QPen(track_color, 4, QtCore.Qt.PenStyle.SolidLine,
+                                 QtCore.Qt.PenCapStyle.RoundCap))
+        painter.drawLine(QtCore.QPointF(left, center_y),
+                         QtCore.QPointF(left + span, center_y))
+        if self.transcript_range is not None and self.maximum() > self.minimum():
+            start, stop = self.transcript_range
+            if stop >= self.minimum() and start <= self.maximum():
+                color = QtGui.QColor(highlight_color)
+                color.setAlpha(190 if self.isEnabled() else 80)
+                painter.setPen(QtGui.QPen(color, 4, QtCore.Qt.PenStyle.SolidLine,
+                                         QtCore.Qt.PenCapStyle.RoundCap))
+                start_x, stop_x = position(start), position(stop)
+                painter.drawLine(QtCore.QPointF(start_x, center_y),
+                                 QtCore.QPointF(stop_x, center_y))
+                painter.setPen(QtGui.QPen(color, 2))
+                for x in (start_x, stop_x):
+                    painter.drawLine(QtCore.QPointF(x, center_y - 5),
+                                     QtCore.QPointF(x, center_y + 5))
+        # Paint the native handle last so it stays visible over the range.
+        option.subControls = handle_control
+        style.drawComplexControl(control, option, painter, self)
+
+
 class MainWindow(QtWidgets.QMainWindow):
 
     def __init__(self, *args, **kwargs):
@@ -371,7 +434,11 @@ class MainWindow(QtWidgets.QMainWindow):
         audio_toolbar.addAction(self.seek_backward_action)
         audio_toolbar.addAction(self.audio_play_pause_action)
 
-        self.audio_seek_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+        self.audio_seek_slider = AudioSeekSlider()
+        self._transcript_range_timer = QtCore.QTimer(self)
+        self._transcript_range_timer.setSingleShot(True)
+        self._transcript_range_timer.setInterval(100)
+        self._transcript_range_timer.timeout.connect(self._update_transcript_audio_range)
         self.audio_seek_slider.setRange(0, 0)
         self.audio_seek_slider.setPageStep(audio_seek_interval_ms)
         self.audio_seek_slider.setSizePolicy(
@@ -577,6 +644,30 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _invalidate_audio_segment_bounds(self):
         self._audio_segment_bounds_cache = None
+        if hasattr(self, '_transcript_range_timer'):
+            self._transcript_range_timer.start()
+
+    def _update_transcript_audio_range(self):
+        """Include pauses between valid timestamped segments in the marked range."""
+        first_start = None
+        last_stop = None
+        block = self.editor.document().begin()
+        while block.isValid():
+            iterator = block.begin()
+            while not iterator.atEnd():
+                fragment = iterator.fragment()
+                if fragment.isValid():
+                    try:
+                        start, stop = decode_timestamp(fragment.charFormat().anchorHref())
+                    except Exception:
+                        start, stop = -1, -1
+                    if 0 <= start <= stop:
+                        first_start = start if first_start is None else min(first_start, start)
+                        last_stop = stop if last_stop is None else max(last_stop, stop)
+                iterator += 1
+            block = block.next()
+        bounds = None if first_start is None else (first_start, last_stop)
+        self.audio_seek_slider.set_transcript_range(bounds)
 
     def _audio_segment_text_bounds(self):
         if self._audio_segment_bounds_cache is not None:
