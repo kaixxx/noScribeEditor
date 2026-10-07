@@ -379,10 +379,9 @@ class MainWindow(QtWidgets.QMainWindow):
         save_file_action.setShortcut(QtGui.QKeySequence.Save)
         save_file_action.triggered.connect(self.file_save)
         file_menu.addAction(save_file_action)
-        file_toolbar.addAction(save_file_action)
 
-        self.autosave_action = QtGui.QAction(qta.icon('mdi6.content-save-check', color='green'), "Autosave is active", self)
-        self.autosave_action.setStatusTip("All changes were saved")
+        self.autosave_action = QtGui.QAction(qta.icon('mdi6.content-save-check', color=icon_color), "Click to save", self)
+        self.autosave_action.setStatusTip("All changes have been saved")
         self.autosave_action.triggered.connect(self.file_save)
         file_toolbar.addAction(self.autosave_action)
 
@@ -790,7 +789,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._autosave_timer.stop()
             self._autosave()
 
-        self._autosave_timer.stop()# top autosave to not override new document
+        self._autosave_timer.stop()# stop autosave to not override new document
 
         try:
             try:
@@ -1072,8 +1071,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         try:
             self._file_save(self.path)
+            self.autosave_action.setIcon(qta.icon('mdi6.content-save-check', color=icon_color))
             current_time = QtCore.QDateTime.currentDateTime().toString("HH:mm:ss")
-            self.autosave_action.setStatusTip(f"All changes saved ({current_time})")
+            self.autosave_action.setStatusTip("All changes have been saved")
             self.status.showMessage(f"All changes saved ({current_time})")
         except Exception as e:
             self.dialog_critical(str(e))
@@ -1102,10 +1102,9 @@ class MainWindow(QtWidgets.QMainWindow):
         ):
             self._autosave_timer.start()
             self.autosave_action.setIcon(
-                qta.icon('mdi6.content-save-edit', color='orange')
+                qta.icon('mdi6.content-save-edit', color=icon_color)
             )
-            self.autosave_action.setStatusTip("Autosave - Waiting to save.")
-            #if saved manually faster this will stay -> better export to an external function that can be called from save_file
+            self.autosave_action.setStatusTip("Click to save changes")
 
     def _autosave(self):
         if (
@@ -1113,10 +1112,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 and self.editor.document().isModified()
         ):
             self.file_save()
-            self.autosave_action.setIcon(
-                qta.icon('mdi6.content-save-check', color='green')
-            )
-            #icon if of mdi6.content-save-off grey
 
     def open_audio_source(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Audio source of the transcript", self.audio_source, "All (*.*)")
