@@ -308,9 +308,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.playback_segment_selected = False
         self.playback_paused = False
         self._audio_segment_bounds_cache = None
-        self._autosave_timer = QtCore.QTimer(self) # Timer for Auto-save after 3 sec
+        self._autosave_timer = QtCore.QTimer(self) # Timer for Auto-save after 2 sec
         self._autosave_timer.setSingleShot(True)
-        self._autosave_timer.setInterval(3000)
+        self._autosave_timer.setInterval(2000)
         self._autosave_timer.timeout.connect(self._autosave)
         self.autosave_suppressed = False
 
@@ -1072,6 +1072,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         try:
             self._file_save(self.path)
+            current_time = QtCore.QDateTime.currentDateTime().toString("HH:mm:ss")
+            self.autosave_action.setStatusTip(f"All changes saved ({current_time})")
+            self.status.showMessage(f"All changes saved ({current_time})")
         except Exception as e:
             self.dialog_critical(str(e))
 
@@ -1092,7 +1095,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self.dialog_critical(str(e))
 
     def _schedule_autosave(self):
-        """Schedule an auto-save 3 seconds after the last document change."""
         if (
                 self.autosave_suppressed is False
                 and self.path is not None
@@ -1103,10 +1105,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 qta.icon('mdi6.content-save-edit', color='orange')
             )
             self.autosave_action.setStatusTip("Autosave - Waiting to save.")
-            #continue
+            #if saved manually faster this will stay -> better export to an external function that can be called from save_file
 
     def _autosave(self):
-        """Save the current document if it has been modified."""
         if (
                 self.path is not None
                 and self.editor.document().isModified()
@@ -1115,8 +1116,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self.autosave_action.setIcon(
                 qta.icon('mdi6.content-save-check', color='green')
             )
-            current_time = QtCore.QDateTime.currentDateTime().toString("HH:mm:ss")
-            self.autosave_action.setStatusTip(f"Autosave - All changes saved ({current_time})")
             #icon if of mdi6.content-save-off grey
 
     def open_audio_source(self):
