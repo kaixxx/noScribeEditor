@@ -308,7 +308,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.playback_segment_selected = False
         self.playback_paused = False
         self._audio_segment_bounds_cache = None
-        
+        self._autosave_timer = QtCore.QTimer(self) # Timer for Auto-save after 2 sec
+        self._autosave_timer.setSingleShot(True)
+        self._autosave_timer.setInterval(2000)
+        self._autosave_timer.timeout.connect(self._autosave)
+        self.autosave_suppressed = False
+
+
         # Restore stored window geometry
         geom = get_config('window_geometry', None)
         if geom:
@@ -325,6 +331,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.editor.setAcceptRichText(True)
         self.editor.setAutoFormatting(QtWidgets.QTextEdit.AutoFormattingFlag.AutoNone)
         self.editor.document().contentsChanged.connect(self._invalidate_audio_segment_bounds)
+        self.editor.document().contentsChanged.connect(self._schedule_autosave)
         self.editor.cursorPositionChanged.connect(self.cursor_changed)
         self.editor.selectionChanged.connect(self.cursor_changed)
         self.editor.installEventFilter(EnterKeyFilter(self.editor))
@@ -372,7 +379,11 @@ class MainWindow(QtWidgets.QMainWindow):
         save_file_action.setShortcut(QtGui.QKeySequence.Save)
         save_file_action.triggered.connect(self.file_save)
         file_menu.addAction(save_file_action)
-        file_toolbar.addAction(save_file_action)
+
+        self.autosave_action = QtGui.QAction(qta.icon('mdi6.content-save-check', color=icon_color), "Click to save", self)
+        self.autosave_action.setStatusTip("All changes have been saved")
+        self.autosave_action.triggered.connect(self.file_save)
+        file_toolbar.addAction(self.autosave_action)
 
         saveas_file_action = QtGui.QAction(qta.icon('mdi.content-save-move', color=icon_color), "Save As...", self)
         saveas_file_action.setStatusTip("Save current file to specified file")
@@ -770,6 +781,16 @@ class MainWindow(QtWidgets.QMainWindow):
         dlg.show()
 
     def _file_open(self, path):
+        if (
+                self._autosave_timer.isActive() #check if there are unsaved changes
+                and self.path is not None
+                and self.editor.document().isModified()
+        ):
+            self._autosave_timer.stop()
+            self._autosave()
+
+        self._autosave_timer.stop()# stop autosave to not override new document
+
         try:
             try:
                 with open(path, 'r', encoding="utf-8") as f:
@@ -784,6 +805,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
             self._stop_playback()
             self._cleanup_temp_audio()
+            self.autosave_suppressed = True
             self.editor.clear()
             self.audio_source = None
             self.status.showMessage("Loading... please wait.")
@@ -846,6 +868,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 doc.setModified(False)
                 
                 self.update_title()
+                self.autosave_suppressed = False
                 self.status.clearMessage()
                 self._show_audio_decode_status()
                     
@@ -944,6 +967,21 @@ class MainWindow(QtWidgets.QMainWindow):
             f'Loaded audio and skipped {self.audio_decode_error_count} invalid audio {packet_label}.',
             7000,
         )
+    def _show_doc_modified_status(self):
+        if(
+            self.path is None
+            or self.editor.document().isModified()
+        ):
+            self.autosave_action.setIcon(
+                qta.icon('mdi6.content-save-edit', color=icon_color)
+            )
+            self.autosave_action.setStatusTip("Click to save changes")
+        else:
+            self.autosave_action.setIcon(qta.icon('mdi6.content-save-check', color=icon_color))
+            current_time = QtCore.QDateTime.currentDateTime().toString("HH:mm:ss")
+            self.autosave_action.setStatusTip("All changes have been saved")
+            self.status.showMessage(f"All changes saved ({current_time})")
+
 
     def file_open(self):
         if self.editor.document().isModified():
@@ -1048,6 +1086,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         try:
             self._file_save(self.path)
+            self._show_doc_modified_status()
         except Exception as e:
             self.dialog_critical(str(e))
 
@@ -1064,9 +1103,28 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         try:
             self._file_save(path)
+            self._show_doc_modified_status()
         except Exception as e:
             self.dialog_critical(str(e))
-                    
+
+    def _schedule_autosave(self):
+        if (
+                self.autosave_suppressed is False
+        ):
+            self._show_doc_modified_status()
+            if (
+                    self.path is not None
+                    and self.editor.document().isModified()
+            ):
+                self._autosave_timer.start()
+
+    def _autosave(self):
+        if (
+                self.path is not None
+                and self.editor.document().isModified()
+        ):
+            self.file_save()
+
     def open_audio_source(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Audio source of the transcript", self.audio_source, "All (*.*)")
         if not path: # dialog is cancelled
