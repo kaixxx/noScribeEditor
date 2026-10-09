@@ -33,6 +33,7 @@ from PyQt6 import QtGui
 from PyQt6 import QtWidgets
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from search_and_replace_dialog import SearchAndReplaceDialog
+from qualcoder_bridge import SendToQualCoderDialog
 import re
 import unicodedata
 
@@ -387,6 +388,13 @@ class MainWindow(QtWidgets.QMainWindow):
         audio_source_action.setStatusTip("Locate the audio source file of the current transcript")
         audio_source_action.triggered.connect(self.open_audio_source)
         file_menu.addAction(audio_source_action)
+
+        file_menu.addSeparator()
+        send_qualcoder_action = QtGui.QAction(qta.icon('mdi.export', color=icon_color), "Send to QualCoder...", self)
+        send_qualcoder_action.setStatusTip("Send the transcript text to the project open in QualCoder (via MCP)")
+        send_qualcoder_action.triggered.connect(self.send_to_qualcoder)
+        file_menu.addAction(send_qualcoder_action)
+        file_toolbar.addAction(send_qualcoder_action)
 
 
         noScribe_toolbar = QtWidgets.QToolBar("noScribe")
@@ -1067,6 +1075,14 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception as e:
             self.dialog_critical(str(e))
                     
+    def send_to_qualcoder(self):
+        if self.editor.document().isEmpty():
+            self.dialog("Open a transcript first.")
+            return
+        dlg = SendToQualCoderDialog(self, self.editor.toHtml(), html_node_to_text, config,
+                                    self.path, self.audio_source)
+        dlg.exec()
+
     def open_audio_source(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Audio source of the transcript", self.audio_source, "All (*.*)")
         if not path: # dialog is cancelled
