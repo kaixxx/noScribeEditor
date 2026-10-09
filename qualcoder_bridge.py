@@ -1,11 +1,21 @@
-# qualcoder_bridge
-# Part of noScribeEdit. Sends the open transcript to a running QualCoder
-# through QualCoder's external MCP server (Streamable HTTP, localhost).
-#
+# noScribeEdit 
+# Part of noScribe, the AI-powered Audio Transcription
+# Copyright (C) 2025 Kai Dröge
+# ported to MAC by Philipp Schneider (gernophil)
+# Based on Megasolid Idiom - https://www.pythonguis.com/examples/python-rich-text-editor/
+
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import json
 import os
