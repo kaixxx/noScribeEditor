@@ -174,12 +174,18 @@ def vtt_escape(txt: str) -> str:
         txt = txt.replace('\n\n', '\n')
     return txt    
 
-def clean_vtt_transcript_text(txt: str) -> str:
+def clean_vtt_transcript_text(txt: str, speaker: str = '') -> str:
     # remove markers for overlapping speech ("//")
     txt = re.sub(r'^\s*//\s*', '', txt)
     txt = re.sub(r'\s*//\s*$', '', txt)
     # remove speaker labels ("S01:", "S02:", etc.) at the beginning of the text
     txt = re.sub(r'(?m)^[ \t]*S\d{2}:[ \t]*', '', txt)
+    # noScribe can write real names instead of S01/S02 (its "Speaker names"
+    # option), and this editor's own replace does the same. The label in the
+    # text then reads "Mona:", so strip whatever the cue's anchor names as the
+    # speaker -- exactly that label, not any word followed by a colon.
+    if speaker:
+        txt = re.sub(r'(?m)^[ \t]*' + re.escape(speaker) + r':[ \t]*', '', txt)
     return txt.strip()
 
 def ms_to_webvtt(milliseconds) -> str:
@@ -217,7 +223,7 @@ def html_to_webvtt(parser: AdvancedHTMLParser.AdvancedHTMLParser, media_path: st
                 start = ms_to_webvtt(int(name_elems[1]))
                 end = ms_to_webvtt(int(name_elems[2]))
                 spkr = name_elems[3].strip('//')
-                txt = clean_vtt_transcript_text(html_node_to_text(segment))
+                txt = clean_vtt_transcript_text(html_node_to_text(segment), spkr)
                 txt = vtt_escape(txt)
                 vtt += f'{i+1}\n{start} --> {end}\n<v {spkr}>{txt}\n\n'
     return vtt
