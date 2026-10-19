@@ -55,10 +55,8 @@ config_file = os.path.join(config_dir, 'editor_config.yaml')
 
 try:
     with open(config_file, 'r') as file:
-        config = yaml.safe_load(file)
-        if not config:
-            raise # config file is empty (None)        
-except: # seems we run it for the first time and there is no config file
+        config = yaml.safe_load(file) or {} # if config is None {}
+except FileNotFoundError: # seems we run it for the first time and there is no config file
     config = {}
     
 def get_config(key: str, default):
@@ -336,6 +334,13 @@ class MainWindow(QtWidgets.QMainWindow):
         container.setStyleSheet("background-color: #ffffff;")
         container.setLayout(layout)
         self.setCentralWidget(container)
+        self._scroll_animation = QtCore.QPropertyAnimation(
+            self.editor.verticalScrollBar(), b"value", self
+        )
+        self._scroll_animation.setDuration(100)  # milliseconds
+        self._scroll_animation.setEasingCurve(
+            QtCore.QEasingCurve.Type.OutCubic
+        )
 
         # Status Bar
         self.status = QtWidgets.QStatusBar()
@@ -1125,6 +1130,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _set_editor_cursor(self, cursor, ignore_during_playback=False):
         """Set the editor cursor, optionally suppressing playback-stop side effects."""
+        old_scroll = self.editor.verticalScrollBar().value()
         if ignore_during_playback:
             self.ignore_cursor_change = True
         try:
@@ -1132,7 +1138,18 @@ class MainWindow(QtWidgets.QMainWindow):
         finally:
             if ignore_during_playback:
                 self.ignore_cursor_change = False
-    
+        new_scroll = self.editor.verticalScrollBar().value()
+        if old_scroll<new_scroll: #if Qt makes the page move, move to upper third not only one line
+            cursor_rect = self.editor.cursorRect()
+            target_y = self.editor.viewport().height() // 3 #cursor should land in upper third
+            scroll_amount = max(0, cursor_rect.bottom() - target_y)
+            target_scroll = new_scroll+scroll_amount
+            self.editor.verticalScrollBar().setValue(target_scroll)
+            self._scroll_animation.stop()
+            self._scroll_animation.setStartValue(new_scroll)
+            self._scroll_animation.setEndValue(target_scroll)
+            self._scroll_animation.start()
+
     def find_segment(self, a_time, search_dir="right", skip_current=False):
         # goes through the text in the given direction starting from the current selection  
         # and stops when a timestamp is found that includes a_time. The found segment is selected.
@@ -1200,8 +1217,6 @@ class MainWindow(QtWidgets.QMainWindow):
         if start == -1:
             # The current cursor may be after the timestamped text, so retry from
             # the beginning when seeking back into an earlier part of the audio.
-            cr.setPosition(0)
-            self._set_editor_cursor(cr, ignore_during_playback=True)
             start, stop = self.find_segment(audio_position)
         return start, stop
 
@@ -1215,7 +1230,6 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 start, stop = decode_timestamp(cr.charFormat().anchorHref())
                 if start > audio_position:
-                    self._set_editor_cursor(cr, ignore_during_playback=True)
                     if self.select_current_segment():
                         return start, stop
             except:
